@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>TERRA — Démo temps réel (WebSocket)</title>
+<style>
+  body{font-family:'Segoe UI',Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
+  header{padding:16px 24px;background:#1e293b;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  h1{font-size:18px;margin:0}
+  #statut{padding:4px 12px;border-radius:12px;font-size:13px;font-weight:bold}
+  .ok{background:#14532d;color:#86efac}.ko{background:#7f1d1d;color:#fca5a5}
+  button{background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px}
+  button:hover{background:#1d4ed8}
+  #compteurs{display:flex;gap:10px;padding:12px 24px;flex-wrap:wrap}
+  .badge{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:6px 12px;font-size:12px}
+  .badge b{color:#38bdf8}
+  #journal{margin:0 24px 24px;background:#020617;border:1px solid #334155;border-radius:8px;
+           padding:12px;height:60vh;overflow-y:auto;font-family:Consolas,monospace;font-size:12px}
+  .evt{padding:6px 8px;border-bottom:1px solid #1e293b}
+  .evt time{color:#64748b;margin-right:8px}
+  .evt .type{display:inline-block;min-width:150px;font-weight:bold;color:#38bdf8}
+  .evt.meteo .type{color:#fbbf24}.evt.alerte .type{color:#f87171}
+  .evt.capteur .type{color:#a78bfa}.evt.prescription .type{color:#4ade80}
+  .evt pre{margin:4px 0 0;color:#94a3b8;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌱 TERRA — Flux temps réel <code>/ws</code></h1>
+  <span id="statut" class="ko">Déconnecté</span>
+  <button onclick="testerMeteo()">Tester : synchroniser la météo</button>
+  <span style="font-size:12px;color:#94a3b8">Toute action sur l'API (signalement, simulation, prescription…) apparaît ici instantanément, sans recharger.</span>
+</header>
+<div id="compteurs"></div>
+<div id="journal"></div>
+
+<script>
+  const compte = {};
+  const statut = document.getElementById('statut');
+  const journal = document.getElementById('journal');
+
+  function famille(type){
+    if(type.startsWith('meteo')) return 'meteo';
+    if(type.startsWith('alerte')) return 'alerte';
+    if(type.startsWith('capteur')) return 'capteur';
+    if(type.startsWith('prescription')) return 'prescription';
+    return '';
+  }
+
+  function afficher(type, data){
+    compte[type] = (compte[type]||0)+1;
+    document.getElementById('compteurs').innerHTML =
+      Object.entries(compte).map(([t,n])=>`<span class="badge">${t} : <b>${n}</b></span>`).join('');
+    const div = document.createElement('div');
+    div.className = 'evt ' + famille(type);
+    div.innerHTML = `<time>${new Date().toLocaleTimeString()}</time>` +
+                    `<span class="type">${type}</span>` +
+                    `<pre>${JSON.stringify(data)}</pre>`;
+    journal.prepend(div);
+  }
+
+  /* --- Connexion WebSocket avec reconnexion automatique --- */
+  let tentatives = 0;
+  function connecter(){
+    const ws = new WebSocket('ws://' + location.host + '/ws');
+    ws.onopen = () => { tentatives = 0; statut.textContent = 'Connecté ✓'; statut.className = 'ok'; };
+    ws.onmessage = e => { const m = JSON.parse(e.data); afficher(m.type, m.data); };
+    ws.onclose = () => {
+      statut.textContent = 'Déconnecté — reconnexion…'; statut.className = 'ko';
+      setTimeout(connecter, Math.min(15000, 1000 * Math.pow(2, tentatives++)));
+    };
+  }
+  connecter();
+
+  /* --- Déclencheur de démonstration (route non protégée) --- */
+  async function testerMeteo(){
+    const r = await fetch('/api/v1/meteo/sync', {method:'POST'});
+    if(!r.ok) alert('Échec du sync météo : ' + r.status);
+    /* rien d'autre à faire : la mesure arrive par le WebSocket */
+  }
+</script>
+</body>
+</html>

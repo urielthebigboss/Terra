@@ -1,0 +1,11 @@
+# Secrets — ne jamais versionner
+.env
+
+# Environnement virtuel Python
+venv/
+.venv/
+
+# Caches Python
+__pycache__/
+*.pyc
+.pytest_cache/
