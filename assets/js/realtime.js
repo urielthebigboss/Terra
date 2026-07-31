@@ -32,9 +32,10 @@
    ========================================================= */
 
 const TerraRealtime = (function () {
-  const URL_WS = 'ws://localhost:8000/ws';
+  // const URL_WS = 'ws://localhost:8000/ws';
+  const URL_WS = "wss://terra-9fg4.onrender.com/ws";
   let ws = null;
-  let tentatives = 0;          // pour le backoff de reconnexion
+  let tentatives = 0; // pour le backoff de reconnexion
   let fermetureVoulue = false; // ne pas se reconnecter après deconnecter()
 
   function connecter() {
@@ -43,26 +44,34 @@ const TerraRealtime = (function () {
 
     ws.onopen = function () {
       tentatives = 0;
-      window.dispatchEvent(new CustomEvent('terra:ws_ouvert'));
-      console.info('[TERRA] WebSocket connecté —', URL_WS);
+      window.dispatchEvent(new CustomEvent("terra:ws_ouvert"));
+      console.info("[TERRA] WebSocket connecté —", URL_WS);
     };
 
     ws.onmessage = function (e) {
       let msg;
-      try { msg = JSON.parse(e.data); } catch (err) { return; }
+      try {
+        msg = JSON.parse(e.data);
+      } catch (err) {
+        return;
+      }
       if (!msg || !msg.type) return;
       /* Chaque type de message devient un événement "terra:<type>"
          auquel n'importe quelle page peut s'abonner. */
-      window.dispatchEvent(new CustomEvent('terra:' + msg.type, { detail: msg.data }));
+      window.dispatchEvent(
+        new CustomEvent("terra:" + msg.type, { detail: msg.data }),
+      );
     };
 
     ws.onclose = function () {
-      window.dispatchEvent(new CustomEvent('terra:ws_ferme'));
+      window.dispatchEvent(new CustomEvent("terra:ws_ferme"));
       if (fermetureVoulue) return;
       /* Reconnexion automatique : 1 s, 2 s, 4 s… plafonné à 15 s.
          Indispensable sur le terrain : le réseau des zones agricoles coupe. */
       const delai = Math.min(15000, 1000 * Math.pow(2, tentatives++));
-      console.warn('[TERRA] WebSocket coupé — reconnexion dans ' + delai / 1000 + ' s');
+      console.warn(
+        "[TERRA] WebSocket coupé — reconnexion dans " + delai / 1000 + " s",
+      );
       setTimeout(connecter, delai);
     };
   }

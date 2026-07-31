@@ -12,63 +12,83 @@
    localStorage pour survivre au rechargement de page.
    ========================================================= */
 
-const TERRA_API = 'http://localhost:8000/api/v1';
-const TERRA_WS  = 'ws://localhost:8000/ws';
-const SESSION_KEY = 'terra_session_v2';
+//const TERRA_API = 'http://localhost:8000/api/v1';
+const TERRA_API = "https://terra-9fg4.onrender.com/api/v1";
+const TERRA_WS = "wss://terra-9fg4.onrender.com/ws";
+const SESSION_KEY = "terra_session_v2";
 
 /* ---------- Session ---------- */
-function getSession(){
-  try{ return JSON.parse(localStorage.getItem(SESSION_KEY)); }catch(e){ return null; }
+function getSession() {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_KEY));
+  } catch (e) {
+    return null;
+  }
 }
-function setSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
-function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+function setSession(s) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+}
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
 
 /* Profil de l'utilisateur connecté : {id, id_uuid, nom, role} */
-function getCurrentUser(){
+function getCurrentUser() {
   const s = getSession();
-  if(!s || !s.profil) return null;
-  return Object.assign({role:s.role}, s.profil);
+  if (!s || !s.profil) return null;
+  return Object.assign({ role: s.role }, s.profil);
 }
 
 /* ---------- Connexion / déconnexion ---------- */
-async function login(email, motDePasse){
+async function login(email, motDePasse) {
   let r;
-  try{
-    r = await fetch(TERRA_API+'/auth/login', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({email:email, mot_de_passe:motDePasse})
+  try {
+    r = await fetch(TERRA_API + "/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email, mot_de_passe: motDePasse }),
     });
-  }catch(e){
-    return {ok:false, msg:"Backend injoignable — démarrez l'API (uvicorn app.main:app) sur le port 8000."};
+  } catch (e) {
+    return {
+      ok: false,
+      msg: "Backend injoignable — démarrez l'API (uvicorn app.main:app) sur le port 8000.",
+    };
   }
-  const data = await r.json().catch(()=>({}));
-  if(!r.ok) return {ok:false, msg: data.detail || 'Email ou mot de passe incorrect.'};
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok)
+    return {
+      ok: false,
+      msg: data.detail || "Email ou mot de passe incorrect.",
+    };
   setSession({
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     role: data.role,
-    profil: data.profil
+    profil: data.profil,
   });
-  return {ok:true, role:data.role, user:data.profil};
+  return { ok: true, role: data.role, user: data.profil };
 }
 
-function logout(){
+function logout() {
   // L'espace administrateur possède sa propre page de connexion.
-  const inAdmin = location.pathname.includes('/admin/');
+  const inAdmin = location.pathname.includes("/admin/");
   clearSession();
-  location.href = inAdmin ? 'login.html' : _rootPath()+'index.html';
+  location.href = inAdmin ? "login.html" : _rootPath() + "index.html";
 }
-function _rootPath(){
-  return location.pathname.includes('/pages/')||location.pathname.includes('/admin/') ? '../' : '';
+function _rootPath() {
+  return location.pathname.includes("/pages/") ||
+    location.pathname.includes("/admin/")
+    ? "../"
+    : "";
 }
 
 /* À appeler en haut de chaque page protégée : vérifie le rôle
    stocké (le backend re-vérifie de toute façon chaque requête). */
-function requireRole(role){
+function requireRole(role) {
   const u = getCurrentUser();
-  if(!u || u.role !== role){
-    location.href = role==='administrateur' ? 'login.html' : _rootPath()+'index.html';
+  if (!u || u.role !== role) {
+    location.href =
+      role === "administrateur" ? "login.html" : _rootPath() + "index.html";
     return null;
   }
   return u;
@@ -80,26 +100,35 @@ function requireRole(role){
    sa session Supabase est renouvelable. « Single-flight » : si dix
    requêtes échouent en même temps, UN seul refresh part. */
 let _refreshEnCours = null;
-async function _rafraichirSession(){
-  if(_refreshEnCours) return _refreshEnCours;
-  _refreshEnCours = (async ()=>{
+async function _rafraichirSession() {
+  if (_refreshEnCours) return _refreshEnCours;
+  _refreshEnCours = (async () => {
     const s = getSession();
-    if(!s || !s.refresh_token) return false;
-    try{
-      const r = await fetch(TERRA_API+'/auth/refresh', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({refresh_token: s.refresh_token})
+    if (!s || !s.refresh_token) return false;
+    try {
+      const r = await fetch(TERRA_API + "/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: s.refresh_token }),
       });
-      if(!r.ok) return false;
+      if (!r.ok) return false;
       const d = await r.json();
-      setSession({access_token:d.access_token, refresh_token:d.refresh_token,
-                  role:d.role, profil:d.profil});
+      setSession({
+        access_token: d.access_token,
+        refresh_token: d.refresh_token,
+        role: d.role,
+        profil: d.profil,
+      });
       return true;
-    }catch(e){ return false; }
+    } catch (e) {
+      return false;
+    }
   })();
-  try{ return await _refreshEnCours; }
-  finally{ _refreshEnCours = null; }
+  try {
+    return await _refreshEnCours;
+  } finally {
+    _refreshEnCours = null;
+  }
 }
 
 /* ---------- Client API ----------
@@ -112,56 +141,61 @@ async function _rafraichirSession(){
             (déconnexion seulement si le refresh échoue) ;
    - GET en erreur réseau ou 5xx → UN retry automatique après 400 ms
             (les micro-coupures ne demandent plus de recharger la page). */
-async function api(path, opts){
+async function api(path, opts) {
   opts = opts || {};
-  const methode = opts.method || 'GET';
+  const methode = opts.method || "GET";
   const _requete = () => {
     const s = getSession();
-    return fetch(TERRA_API+path, {
+    return fetch(TERRA_API + path, {
       method: methode,
       headers: Object.assign(
-        {'Content-Type':'application/json'},
-        s ? {Authorization:'Bearer '+s.access_token} : {}
+        { "Content-Type": "application/json" },
+        s ? { Authorization: "Bearer " + s.access_token } : {},
       ),
-      body: opts.body ? JSON.stringify(opts.body) : undefined
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
   };
 
   let r;
-  try{
+  try {
     r = await _requete();
-  }catch(e){
+  } catch (e) {
     // Erreur réseau : les GET (idempotents) ont droit à une 2e chance
-    if(methode === 'GET' && !opts._retente){
-      await new Promise(res=>setTimeout(res, 400));
-      return api(path, Object.assign({}, opts, {_retente:true}));
+    if (methode === "GET" && !opts._retente) {
+      await new Promise((res) => setTimeout(res, 400));
+      return api(path, Object.assign({}, opts, { _retente: true }));
     }
-    const err = new Error("Backend injoignable — l'API TERRA est-elle démarrée ?");
-    if(!opts.silent && typeof toast==='function') toast(err.message,'err');
+    const err = new Error(
+      "Backend injoignable — l'API TERRA est-elle démarrée ?",
+    );
+    if (!opts.silent && typeof toast === "function") toast(err.message, "err");
     throw err;
   }
 
   // Token expiré : on renouvelle la session PUIS on rejoue la requête.
-  if(r.status === 401 && getSession() && !opts._apresRefresh){
+  if (r.status === 401 && getSession() && !opts._apresRefresh) {
     const ok = await _rafraichirSession();
-    if(ok) return api(path, Object.assign({}, opts, {_apresRefresh:true}));
-    logout();                     // refresh impossible → vraie fin de session
-    throw new Error('Session expirée');
+    if (ok) return api(path, Object.assign({}, opts, { _apresRefresh: true }));
+    logout(); // refresh impossible → vraie fin de session
+    throw new Error("Session expirée");
   }
 
   // 5xx transitoire (ex. micro-coupure Supabase) : retry des GET
-  if(r.status >= 500 && methode === 'GET' && !opts._retente){
-    await new Promise(res=>setTimeout(res, 400));
-    return api(path, Object.assign({}, opts, {_retente:true}));
+  if (r.status >= 500 && methode === "GET" && !opts._retente) {
+    await new Promise((res) => setTimeout(res, 400));
+    return api(path, Object.assign({}, opts, { _retente: true }));
   }
 
-  if(!r.ok){
-    let detail = 'Erreur '+r.status;
-    try{ const j = await r.json(); if(j.detail) detail = j.detail; }catch(e){}
+  if (!r.ok) {
+    let detail = "Erreur " + r.status;
+    try {
+      const j = await r.json();
+      if (j.detail) detail = j.detail;
+    } catch (e) {}
     const err = new Error(detail);
-    if(!opts.silent && typeof toast==='function') toast(detail,'err');
+    if (!opts.silent && typeof toast === "function") toast(detail, "err");
     throw err;
   }
-  if(r.status === 204) return null;
+  if (r.status === 204) return null;
   return r.json();
 }
