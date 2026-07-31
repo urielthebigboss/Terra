@@ -17,10 +17,12 @@ les dashboards ouverts se mettent à jour instantanément.
 
 from fastapi import APIRouter, Depends, Query
 
+from app.config.database import get_supabase
 from app.routers.auth import utilisateur_courant
 from app.schemas.auth import MeResponse
 from app.schemas.mesure import MesureCreate, MesureOut
-from app.services import mesure_service
+from app.services import alerte_expert, mesure_service, moteur_expert
+from app.services.mesure_service import extraire_grandeurs
 from app.websocket.manager import manager
 
 router = APIRouter(prefix="/api/v1/mesures", tags=["Mesures"])
@@ -40,7 +42,14 @@ def lister(
 async def ajouter(corps: MesureCreate, user: MeResponse = Depends(utilisateur_courant)) -> MesureOut:
     """Contrat des capteurs IoT : {id_capteur, donnees}. Le payload est
     validé selon le type du capteur, puis la mesure est diffusée en
-    WebSocket (dashboard temps réel, sans rechargement)."""
-    mesure = mesure_service.ajouter(user, corps)
+    WebSocket (dashboard temps réel, sans rechargement) et déclenche
+    les alertes immédiates (humidité critique, chaleur, froid…)."""
+    mesure, capteur = mesure_service.ajouter(user, corps)
     await manager.broadcast({"type": "mesure_update", "data": mesure.model_dump(mode="json")})
+
+    sb = get_supabase()
+    stade = moteur_expert.stade_actuel(sb, capteur["id_parcelle"])
+    grandeurs = extraire_grandeurs(capteur["type"], mesure.donnees)
+    await alerte_expert.verifier_mesure(sb, capteur["id_parcelle"], grandeurs, stade)
+
     return mesure

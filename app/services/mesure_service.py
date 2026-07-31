@@ -134,13 +134,17 @@ def lister(
     return [MesureOut(**row) for row in result.data]
 
 
-def ajouter(user: MeResponse, corps: MesureCreate) -> MesureOut:
+def ajouter(user: MeResponse, corps: MesureCreate) -> tuple[MesureOut, dict]:
     """Enregistre UNE mesure envoyée par un capteur (ESP32 → HTTP).
 
     Le JSONB doit contenir au moins une valeur numérique reconnue
     pour le type du capteur — on refuse les payloads vides ou
     malformés plutôt que de stocker du bruit. Met aussi à jour
-    derniere_comm du capteur (supervision du parc)."""
+    derniere_comm du capteur (supervision du parc).
+
+    Retourne (mesure, capteur) — le capteur (avec son id_parcelle et
+    son type) est renvoyé pour permettre au router de déclencher les
+    alertes immédiates sans requête supplémentaire."""
     capteur = get_capteur_ou_404(corps.id_capteur)
     verifier_acces_capteur(user, capteur)
 
@@ -160,4 +164,4 @@ def ajouter(user: MeResponse, corps: MesureCreate) -> MesureOut:
     ).execute()
 
     supabase.table("capteur").update({"derniere_comm": quand}).eq("id", corps.id_capteur).execute()
-    return MesureOut(**result.data[0])
+    return MesureOut(**result.data[0]), capteur

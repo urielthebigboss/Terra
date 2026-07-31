@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from app.routers.auth import utilisateur_courant
 from app.schemas.auth import MeResponse
 from app.schemas.prescription import PrescriptionCreate, PrescriptionOut
-from app.services import prescription_service
+from app.services import alerte_expert, prescription_service
 from app.services.acces import get_parcelle_ou_404
 from app.websocket.manager import manager
 
@@ -53,6 +53,9 @@ async def marquer_faite(id_prescription: int, user: MeResponse = Depends(utilisa
     try:
         parcelle = get_parcelle_ou_404(prescription.id_parcelle)
         await manager.broadcast({"type": "parcelle_update", "data": parcelle})
+        await alerte_expert.verifier_consommation(
+            prescription.id_parcelle, prescription.volume_eau, parcelle.get("superficie")
+        )
     except Exception:
         pass  # la diffusion est un confort, jamais bloquante
     return prescription

@@ -96,18 +96,21 @@ def _plausible(grandeur: str, valeur: float) -> bool:
 # =========================================================
 # 4) Ingestion complète d'un paquet
 # =========================================================
-def ingerer(payload: IotIngestPayload) -> tuple[int, list[IotMesureCreee], list[str]]:
+def ingerer(payload: IotIngestPayload) -> tuple[int, list[IotMesureCreee], list[str], list[tuple[str, float]]]:
     """Traite un paquet de nœud et écrit les mesures valides.
 
-    Retourne (id_parcelle, mesures_creees, ignorees). N'insère que
-    des grandeurs réellement mesurées et plausibles ; ne lève une
-    erreur que pour les problèmes structurels (nœud inconnu, clé
-    invalide gérée en amont)."""
+    Retourne (id_parcelle, mesures_creees, ignorees, invalides).
+    N'insère que des grandeurs réellement mesurées et plausibles ; ne
+    lève une erreur que pour les problèmes structurels (nœud inconnu,
+    clé invalide gérée en amont). `invalides` liste les grandeurs
+    reçues mais hors bornes physiques (champ, valeur) — utilisé pour
+    déclencher une alerte immédiate « capteur défaillant »."""
     supabase = get_supabase()
     id_parcelle, capteurs_par_type = _resoudre_noeud(payload.sensor_node_id)
     quand = (payload.measured_at or datetime.now(timezone.utc)).isoformat()
 
     ignorees: list[str] = []
+    invalides: list[tuple[str, float]] = []
 
     # --- 4a. Filtrer + router les grandeurs vers leur capteur -----
     # On regroupe par id_capteur : le DHT22 combine 2 grandeurs dans
@@ -120,6 +123,7 @@ def ingerer(payload: IotIngestPayload) -> tuple[int, list[IotMesureCreee], list[
             continue  # capteur non fourni (panne/absent) — silencieux, normal
         if not _plausible(grandeur, float(valeur)):
             ignorees.append(f"{champ} (hors bornes : {valeur})")
+            invalides.append((champ, float(valeur)))
             logger.warning("Nœud %s : %s hors bornes (%s) — écarté.", payload.sensor_node_id, champ, valeur)
             continue
         capteur = capteurs_par_type.get(type_cible)
@@ -171,4 +175,4 @@ def ingerer(payload: IotIngestPayload) -> tuple[int, list[IotMesureCreee], list[
         "Ingestion nœud %s (seq %s) : %s mesure(s) écrite(s), %s ignorée(s).",
         payload.sensor_node_id, payload.sequence_number, len(creees), len(ignorees),
     )
-    return id_parcelle, creees, ignorees
+    return id_parcelle, creees, ignorees, invalides

@@ -47,7 +47,14 @@ def lister(
         .table(TABLE)
         .select("*")
         .in_("id_parcelle", parcelles)
-        .order("date", desc=True)
+        # `date` ne porte que le JOUR (ex. "2026-07-27") : avec le moteur
+        # qui tourne toutes les 5 min, plusieurs dizaines de prescriptions
+        # partagent la même date en une journée — trier dessus ne
+        # départage pas les égalités par récence et peut faire disparaître
+        # la toute dernière prescription derrière d'anciennes du même
+        # jour une fois la limite atteinte. `cree_le` (horodatage précis)
+        # est le seul tri fiable.
+        .order("cree_le", desc=True)
         .limit(limit)
     )
     if etat:

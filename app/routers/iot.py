@@ -17,8 +17,10 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, status
 
+from app.config.database import get_supabase
 from app.schemas.iot import IotIngestPayload, IotIngestResponse
-from app.services import iot_service, moteur_expert
+from app.services import alerte_expert, iot_service, moteur_expert
+from app.services.mesure_service import extraire_grandeurs
 from app.websocket.manager import manager
 
 logger = logging.getLogger("terra.iot")
@@ -52,9 +54,9 @@ async def _declencher_moteur(id_parcelle: int) -> None:
 )
 async def ingest(payload: IotIngestPayload, taches: BackgroundTasks) -> IotIngestResponse:
     """Reçoit le paquet agrégé d'un nœud (DHT22 + capacitif), écrit
-    les mesures valides, met à jour les dashboards en temps réel et
-    relance le moteur expert."""
-    id_parcelle, creees, ignorees = iot_service.ingerer(payload)
+    les mesures valides, met à jour les dashboards en temps réel,
+    déclenche les alertes immédiates et relance le moteur expert."""
+    id_parcelle, creees, ignorees, invalides = iot_service.ingerer(payload)
 
     # Temps réel : chaque mesure écrite est diffusée au format attendu
     # par le frontend (mêmes clés que MesureOut : id, id_capteur, date,
@@ -64,6 +66,18 @@ async def ingest(payload: IotIngestPayload, taches: BackgroundTasks) -> IotInges
             "type": "mesure_update",
             "data": {"id": m.id, "id_capteur": m.id_capteur, "date": m.date.isoformat(), "donnees": m.donnees},
         })
+
+    # Alertes IMMÉDIATES (ne pas attendre le prochain cycle du moteur) :
+    # conditions lisibles sur les mesures qui viennent d'être écrites,
+    # + toute grandeur reçue mais hors bornes physiques (capteur suspect).
+    if creees:
+        sb = get_supabase()
+        stade = moteur_expert.stade_actuel(sb, id_parcelle)
+        for m in creees:
+            grandeurs = extraire_grandeurs(m.type, m.donnees)
+            await alerte_expert.verifier_mesure(sb, id_parcelle, grandeurs, stade)
+    for champ, valeur in invalides:
+        await alerte_expert.verifier_donnee_invalide(id_parcelle, champ, valeur)
 
     # Moteur expert : relancé APRÈS la réponse (BackgroundTasks) pour ne
     # pas faire attendre la passerelle. Uniquement si des données sont

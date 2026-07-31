@@ -48,7 +48,6 @@ ARBRE DE DÉCISION (règles FAO F1-F5 + règles ANADER A1-A4) :
   A3  humidité de l'air ≥ 85 % en floraison/fructification
                                         → vigilance mildiou : ne pas
                                           mouiller le feuillage
-  A4  dose > 10 mm                      → fractionner en 2 apports
 
 DOSE (mm = L/m²) :
   recharge sol = (seuil_cible − humidité) × 3 mm par point %
@@ -73,9 +72,16 @@ FORMAT des recommandations (langage conseiller agricole) :
 GARANTIES :
   - le moteur RAFRAÎCHIT son avis (les anciennes prescriptions
     « a_faire » marquées [Moteur expert] passent à « ignoree ») ;
+  - si la décision est IDENTIQUE à l'avis déjà actif (même action,
+    même dose, même priorité), rien n'est réécrit — pas de spam ;
   - les prescriptions saisies à la main sont préservées ;
   - une parcelle en erreur ne bloque jamais les autres ;
   - chaque insertion est diffusée en WebSocket (temps réel).
+
+ALERTES IMMÉDIATES (hors cycle des 5 min) : voir
+  services/alerte_expert.py — humidité critique, chaleur/froid,
+  capteur muet, pluie forte, irrigation trop retardée, consommation
+  anormale. Documentées dans docs/MOTEUR_EXPERT.md, section 7.
 =========================================================
 """
 
@@ -85,13 +91,13 @@ from datetime import datetime, timedelta, timezone
 
 from app.config.config import get_settings
 from app.config.database import get_supabase
+from app.services import alerte_expert
 from app.services.mesure_service import extraire_grandeurs
 from app.websocket.manager import manager
 
 logger = logging.getLogger("terra.moteur")
 
-PROFONDEUR_RACINAIRE_MM = 300.0   # zone racinaire tomate ≈ 30 cm (FAO-56 tab.22)
-MM_PAR_POINT_HUMIDITE = PROFONDEUR_RACINAIRE_MM * 0.01  # 1 % vol. = 3 mm d'eau
+PROFONDEUR_RACINAIRE_MM = 300.0   # repli si stade inconnu (voir _profondeur_racinaire_mm)
 EFFICACITE_IRRIGATION = 0.90      # goutte-à-goutte (aspersion ≈ 0.75)
 DOSE_MAX_MM = 15.0                # plafond par prescription (anti sur-arrosage)
 DOSE_MIN_MM = 2.0                 # en dessous, l'apport est insignifiant
@@ -99,7 +105,6 @@ FRAICHEUR_MESURE_H = 24           # une mesure plus vieille n'est plus fiable
 HORIZON_PLUIE_H = 24              # fenêtre de prise en compte de la pluie prévue
 SEUIL_CANICULE_C = 35.0           # règle ANADER A2 : chaleur extrême
 SEUIL_HUMIDITE_AIR_MALADIE = 85.0 # règle ANADER A3 : risque fongique (mildiou)
-SEUIL_FRACTIONNEMENT_MM = 10.0    # règle ANADER A4 : fractionner les grosses doses
 # Débit du réseau d'irrigation de l'exploitation (litres/minute). Sert à
 # convertir le VOLUME total à apporter (qui dépend de la surface) en une
 # DURÉE d'arrosage concrète — plus la parcelle est grande, plus il faut
@@ -203,6 +208,19 @@ def _stade_courant(profils: list[dict], jour_culture: int) -> dict | None:
     return profils[0] if jour_culture < profils[0]["debut_jour"] else profils[-1]
 
 
+def stade_actuel(sb, id_parcelle: int) -> dict | None:
+    """Version autonome de la résolution de stade, pour les appelants
+    qui n'ont pas déjà chargé parcelle/profils (ex. les alertes
+    immédiates déclenchées juste après l'ingestion d'une mesure)."""
+    lignes = sb.table("parcelle").select("date_plantation").eq("id", id_parcelle).limit(1).execute().data
+    if not lignes:
+        return None
+    profils = sb.table("profil_culture").select("*").order("debut_jour").execute().data
+    date_plantation = datetime.fromisoformat(str(lignes[0]["date_plantation"])).date()
+    jour_culture = (datetime.now(timezone.utc).date() - date_plantation).days + 1
+    return _stade_courant(profils, jour_culture)
+
+
 def _mesures_capteurs(sb, id_parcelle: int) -> dict:
     """Dernières valeurs FRAÎCHES (< 24 h) des capteurs ACTIFS de la
     parcelle, toutes grandeurs confondues :
@@ -302,6 +320,28 @@ def _phrase_pluie(pluie: float) -> str:
     return f"Une pluie de {pluie} mm est prévue aujourd'hui."
 
 
+def _profondeur_racinaire_mm(nom_stade: str) -> float:
+    """Profondeur racinaire EFFECTIVE (zone d'extraction d'eau), pas la
+    profondeur anatomique maximale. FAO-56 tab. 22 : le pivot de la
+    tomate peut descendre à 0.7-1.5 m, mais la fiche FAO « Crop Water
+    Information: Tomato » précise que 70-80 % de l'extraction d'eau a
+    lieu dans les 0.4-0.6 m supérieurs. Cibler la profondeur anatomique
+    max (ex. 1.5 m) sur-arroserait et lessiverait les engrais au-delà de
+    la zone réellement exploitée par la plante — on cible donc la zone
+    d'extraction effective, pas le maximum anatomique.
+    PROFONDEUR_RACINAIRE_MM reste le repli si le stade est inconnu."""
+    s = nom_stade.lower()
+    if "semis" in s or "lev" in s:
+        return 200.0   # stade initial/repiquage : le plant s'installe
+    if "croissance" in s:
+        return 300.0   # les racines colonisent le sol
+    if "florais" in s or "fructif" in s:
+        return 500.0   # cœur du système racinaire actif
+    if "matur" in s or "recolte" in s or "récolte" in s:
+        return 600.0   # profondeur d'extraction maximale avant lessivage
+    return PROFONDEUR_RACINAIRE_MM  # stade non reconnu : repli documenté (30 cm)
+
+
 def analyser_parcelle(sb, parcelle: dict, profils: list[dict], meteo: dict) -> dict:
     """Analyse UNE parcelle et formule une recommandation en langage
     de conseiller agricole (deux volets « Pourquoi » / « Recommandation »).
@@ -332,6 +372,9 @@ def analyser_parcelle(sb, parcelle: dict, profils: list[dict], meteo: dict) -> d
     nom_stade = stade["stade"]
     stade_txt = _decrire_stade(nom_stade)
     superficie = parcelle.get("superficie")
+    # Profondeur racinaire DYNAMIQUE (dépend du stade, pas une constante
+    # unique) : 1% d'humidité volumétrique sur CETTE profondeur = X mm.
+    mm_par_point = _profondeur_racinaire_mm(nom_stade) * 0.01
 
     # ---- Évaporation : ET0 (Hargreaves, FAO-56) puis ETc = ET0×Kc --
     lat = parcelle.get("lat") or settings.default_lat
@@ -381,13 +424,15 @@ def analyser_parcelle(sb, parcelle: dict, profils: list[dict], meteo: dict) -> d
             extras.append("Arrosez uniquement au pied, sans mouiller les feuilles (risque de mildiou).")
         suffixe = (" " + " ".join(extras)) if extras else ""
         if d["duree_minutes_arrondi"] is not None:
-            fract = ""
-            if dose_mm > SEUIL_FRACTIONNEMENT_MM:
-                fract = " Fractionnez en 2 apports (matin et soir)."
+            # Pas de plan sur 2 apports (matin/soir) : le moteur se
+            # ré-évalue toutes les 5 min sur les mesures réelles — c'est
+            # LUI qui décide s'il faut arroser à nouveau plus tard, pas
+            # une consigne figée donnée à l'avance qui deviendrait fausse
+            # si l'humidité remonte après ce premier apport.
             action = (
                 f"Lancez l'irrigation pendant {d['duree_minutes_arrondi']} minutes, "
                 f"idéalement {moment}. Cela correspond à environ "
-                f"{d['litres_total']} Litres d'eau pour l'ensemble de la parcelle.{fract}{suffixe}"
+                f"{d['litres_total']} Litres d'eau pour l'ensemble de la parcelle.{suffixe}"
             )
             return action, d["duree_minutes_arrondi"]
         # Surface inconnue : on ne peut pas donner minutes/litres totaux
@@ -410,7 +455,7 @@ def analyser_parcelle(sb, parcelle: dict, profils: list[dict], meteo: dict) -> d
             0.0, "moyenne")
 
     # ---- Calcul de dose FAO (utilisé par F1/F2/F3) -----------------
-    recharge = max(0.0, (seuil_cible - humidite) * MM_PAR_POINT_HUMIDITE)
+    recharge = max(0.0, (seuil_cible - humidite) * mm_par_point)
     dose_brute = recharge + etc - pluie
     dose = round(min(DOSE_MAX_MM, max(0.0, dose_brute) / EFFICACITE_IRRIGATION), 1)
 
@@ -437,7 +482,7 @@ def analyser_parcelle(sb, parcelle: dict, profils: list[dict], meteo: dict) -> d
     # ---- F2 : sous le seuil de déclenchement -----------------------
     if humidite < seuil_bas:
         # Report si la pluie prévue RAMÈNE le sol au-dessus du seuil.
-        besoin_retour_seuil = (seuil_bas - humidite) * MM_PAR_POINT_HUMIDITE + etc
+        besoin_retour_seuil = (seuil_bas - humidite) * mm_par_point + etc
         if pluie > 0 and pluie >= besoin_retour_seuil:
             return presc(
                 "N'arrosez pas maintenant : laissez la pluie faire le travail. "
@@ -523,11 +568,24 @@ async def executer(ids_parcelles: list[int] | None = None) -> dict:
             # --- Avis actif actuel du moteur (pour comparaison de stabilité
             #     et pour le rafraîchissement) ---
             anciennes = (
-                sb.table("prescription").select("id, justification, action, volume_eau, priorite")
+                sb.table("prescription").select("id, justification, action, volume_eau, priorite, cree_le")
                 .eq("id_parcelle", parcelle["id"]).eq("etat", "a_faire")
                 .execute().data
             )
             actives_moteur = [p for p in anciennes if (p["justification"] or "").startswith(MARQUE)]
+
+            # --- Alertes de cycle (capteur muet, pluie forte, irrigation
+            #     en attente depuis trop longtemps) — indépendantes de la
+            #     stabilité de la recommandation elle-même. ---
+            try:
+                await alerte_expert.verifier_cycle(
+                    parcelle["id"],
+                    _mesures_capteurs(sb, parcelle["id"]).get("humidite_sol"),
+                    meteo,
+                    anciennes,
+                )
+            except Exception as exc:
+                logger.warning("Alertes de cycle — échec sur %s : %s", parcelle.get("nom"), exc)
 
             prescription = resultat["prescription"]
 
@@ -544,12 +602,20 @@ async def executer(ids_parcelles: list[int] | None = None) -> dict:
 
             # --- Stabilité : cadence 5 min, mais si la décision est
             #     IDENTIQUE à l'avis déjà actif (même action, même dose,
-            #     même priorité), on ne réécrit rien — pas de spam tant
-            #     que la mesure/situation n'a pas réellement changé. ---
+            #     même priorité, ET MÊME JUSTIFICATION), on ne réécrit
+            #     rien — pas de spam tant que la mesure/situation n'a pas
+            #     réellement changé. La justification est INCLUSE dans la
+            #     comparaison exprès : elle porte le chiffre d'humidité
+            #     mesuré, donc dès qu'il varie (même sans changer de
+            #     règle F1-F5), l'avis est considéré différent et
+            #     rafraîchi — les chiffres affichés ne peuvent plus
+            #     devenir obsolètes pendant que la carte "État de la
+            #     parcelle" continue d'afficher la valeur en direct. ---
             stable = any(
                 a["action"] == prescription["action"]
                 and a["volume_eau"] == prescription["volume_eau"]
                 and a["priorite"] == prescription["priorite"]
+                and a["justification"] == prescription["justification"]
                 for a in actives_moteur
             )
             if stable:
