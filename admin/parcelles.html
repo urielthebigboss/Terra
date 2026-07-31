@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parcelles</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div class="card span12">
+                <h3>
+                  <i data-ti="tomate"></i>Parcelles
+                  <button
+                    class="btn-sm primary"
+                    style="margin-left: auto"
+                    onclick="openCreate()"
+                  >
+                    <i data-ti="plus"></i> Ajouter une parcelle
+                  </button>
+                </h3>
+                <div class="toolbar">
+                  <input
+                    type="search"
+                    class="grow"
+                    id="search"
+                    placeholder="Rechercher une parcelle..."
+                    oninput="renderTable()"
+                  />
+                </div>
+                <div class="table-wrap">
+                  <table class="htable" id="parcTable"></table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+      const admin = Layout.mount({
+        role: "administrateur",
+        active: "parcelles",
+        title: "Parcelles",
+        greet: "",
+      });
+      let parcelles = [],
+        agriculteurs = [];
+
+      async function charger() {
+        [parcelles, agriculteurs] = await Promise.all([
+          api("/parcelles", { silent: true }).catch(() => []),
+          api("/agriculteurs", { silent: true }).catch(() => []),
+        ]);
+        renderTable();
+      }
+      charger();
+
+      function agriNom(id) {
+        const a = agriculteurs.find((x) => x.id === id);
+        return a ? a.nom : "#" + id;
+      }
+      function ownerOptions(selected) {
+        return agriculteurs
+          .map(
+            (u) =>
+              '<option value="' +
+              u.id +
+              '" ' +
+              (u.id === selected ? "selected" : "") +
+              ">" +
+              u.nom +
+              "</option>",
+          )
+          .join("");
+      }
+
+      function renderTable() {
+        const q = (document.getElementById("search").value || "").toLowerCase();
+        const liste = parcelles.filter(
+          (p) =>
+            !q ||
+            p.nom.toLowerCase().includes(q) ||
+            p.culture.toLowerCase().includes(q) ||
+            agriNom(p.id_agriculteur).toLowerCase().includes(q),
+        );
+        const t = document.getElementById("parcTable");
+        t.innerHTML =
+          "<tr><th>Nom</th><th>Culture</th><th>Superficie</th><th>Plants</th><th>Plantation</th><th>Jour du cycle</th><th>Propriétaire</th><th>Stade</th><th></th></tr>" +
+          (liste.length
+            ? liste
+                .map((p) => {
+                  const info = computeStade(p);
+                  return (
+                    "<tr><td><b>" +
+                    p.nom +
+                    "</b></td><td>" +
+                    p.culture +
+                    "</td><td>" +
+                    (p.superficie != null ? p.superficie + " ha" : "—") +
+                    "</td><td>" +
+                    (p.nombre_plant != null ? p.nombre_plant : "—") +
+                    "</td><td>" +
+                    fmtDate(p.date_plantation) +
+                    "</td><td>" +
+                    info.jourActuel +
+                    "</td><td>" +
+                    agriNom(p.id_agriculteur) +
+                    '</td><td><span class="chip g">' +
+                    info.stade.label +
+                    "</span></td>" +
+                    '<td class="rowactions"><button class="btn-sm" onclick="openEdit(' +
+                    p.id +
+                    ')">Modifier</button><button class="btn-sm danger" onclick="removeParcelle(' +
+                    p.id +
+                    ",'" +
+                    p.nom.replace(/'/g, "\\'") +
+                    "')\">Supprimer</button></td></tr>"
+                  );
+                })
+                .join("")
+            : '<tr><td colspan="9" style="text-align:center;color:var(--muted)">Aucune parcelle trouvée</td></tr>');
+      }
+
+      function formFields(p) {
+        p = p || {
+          nom: "",
+          culture: "Tomate",
+          superficie: "",
+          nombre_plant: "",
+          date_plantation: new Date().toISOString().slice(0, 10),
+        };
+        return (
+          '<div class="field"><label>Nom de la parcelle</label><input id="mNom" value="' +
+          p.nom +
+          '" placeholder="ex. Parcelle D"></div>' +
+          '<div class="field"><label>Culture</label><input id="mCulture" value="' +
+          p.culture +
+          '"></div>' +
+          '<div class="field"><label>Superficie (ha)</label><input id="mSuperficie" type="number" step="0.1" min="0" value="' +
+          (p.superficie != null ? p.superficie : "") +
+          '"></div>' +
+          '<div class="field"><label>Nombre de plants</label><input id="mNbPlant" type="number" min="0" step="1" value="' +
+          (p.nombre_plant != null ? p.nombre_plant : "") +
+          '" placeholder="ex. 1200"></div>' +
+          '<div class="field"><label>Date de plantation</label><input id="mDate" type="date" value="' +
+          p.date_plantation +
+          '"></div>'
+        );
+      }
+      function lireForm() {
+        const sup = parseFloat(document.getElementById("mSuperficie").value);
+        const nb = parseInt(document.getElementById("mNbPlant").value, 10);
+        return {
+          nom: document.getElementById("mNom").value.trim(),
+          culture: document.getElementById("mCulture").value.trim() || "Tomate",
+          superficie: isNaN(sup) ? null : sup,
+          nombre_plant: isNaN(nb) ? null : nb,
+          date_plantation: document.getElementById("mDate").value,
+        };
+      }
+
+      function openCreate() {
+        if (!agriculteurs.length) {
+          toast(
+            "Créez d'abord un compte agriculteur (le propriétaire).",
+            "err",
+          );
+          return;
+        }
+        openModal({
+          title: "Ajouter une parcelle",
+          sub: "La parcelle appartient à un agriculteur : elle apparaîtra dans son espace.",
+          bodyHTML:
+            formFields() +
+            '<div class="field"><label>Propriétaire</label><select id="mOwner">' +
+            ownerOptions(null) +
+            "</select></div>",
+          okText: "Créer",
+          danger: false,
+          onOk: async () => {
+            const body = lireForm();
+            body.id_agriculteur = +document.getElementById("mOwner").value;
+            if (!body.nom || !body.date_plantation) {
+              toast("Nom et date de plantation sont obligatoires.", "err");
+              return;
+            }
+            try {
+              await api("/parcelles", { method: "POST", body });
+              closeModal();
+              toast("Parcelle créée ✅", "ok");
+              charger();
+            } catch (e) {}
+          },
+        });
+      }
+      function openEdit(id) {
+        const p = parcelles.find((x) => x.id === id);
+        openModal({
+          title: "Modifier la parcelle",
+          sub: "Vous pouvez aussi réattribuer la parcelle à un autre agriculteur.",
+          bodyHTML:
+            formFields(p) +
+            '<div class="field"><label>Propriétaire</label><select id="mOwner">' +
+            ownerOptions(p.id_agriculteur) +
+            "</select></div>",
+          okText: "Enregistrer",
+          danger: false,
+          onOk: async () => {
+            const body = lireForm();
+            body.id_agriculteur = +document.getElementById("mOwner").value;
+            if (!body.nom || !body.date_plantation) {
+              toast("Nom et date de plantation sont obligatoires.", "err");
+              return;
+            }
+            try {
+              await api("/parcelles/" + id, { method: "PATCH", body });
+              closeModal();
+              toast("Parcelle mise à jour ✅", "ok");
+              charger();
+            } catch (e) {}
+          },
+        });
+      }
+      function removeParcelle(id, nom) {
+        confirmAction(
+          "Supprimer définitivement la parcelle <b>" +
+            nom +
+            "</b> ?<br>Ses capteurs, mesures et prescriptions seront supprimés en cascade.",
+          async () => {
+            try {
+              await api("/parcelles/" + id, { method: "DELETE" });
+              closeModal();
+              toast("Parcelle supprimée.", "ok");
+              charger();
+            } catch (e) {}
+          },
+          { title: "Supprimer la parcelle", okText: "Supprimer" },
+        );
+      }
+    </script>
+  </body>
+</html>

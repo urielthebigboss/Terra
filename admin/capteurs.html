@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Capteurs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div class="card span12">
+                <h3>
+                  <i data-ti="capteur"></i>Capteurs IoT
+                  <button
+                    class="btn-sm primary"
+                    style="margin-left: auto"
+                    onclick="openCreate()"
+                  >
+                    <i data-ti="plus"></i> Ajouter un capteur
+                  </button>
+                </h3>
+                <div class="toolbar">
+                  <input
+                    type="search"
+                    class="grow"
+                    id="search"
+                    placeholder="Rechercher un capteur..."
+                    oninput="renderTable()"
+                  />
+                  <select id="filterParcelle" onchange="renderTable()">
+                    <option value="">Toutes les parcelles</option>
+                  </select>
+                  <select id="filterEtat" onchange="renderTable()">
+                    <option value="">Tous les états</option>
+                    <option value="actif">Actif</option>
+                    <option value="panne">En panne</option>
+                    <option value="hors_ligne">Hors ligne</option>
+                    <option value="maintenance">Maintenance</option>
+                  </select>
+                </div>
+                <div class="table-wrap">
+                  <table class="htable" id="capTable"></table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/realtime.js"></script>
+    <script>
+      const admin = Layout.mount({
+        role: "administrateur",
+        active: "capteurs",
+        title: "Capteurs",
+        greet: "",
+      });
+      let capteurs = [],
+        parcelles = [];
+
+      async function charger() {
+        [capteurs, parcelles] = await Promise.all([
+          api("/capteurs", { silent: true }).catch(() => []),
+          api("/parcelles", { silent: true }).catch(() => []),
+        ]);
+        const fp = document.getElementById("filterParcelle");
+        const cur = fp.value;
+        fp.innerHTML =
+          '<option value="">Toutes les parcelles</option>' +
+          parcelles
+            .map((p) => '<option value="' + p.id + '">' + p.nom + "</option>")
+            .join("");
+        fp.value = cur;
+        renderTable();
+      }
+      charger();
+
+      function parcelleNom(id) {
+        const p = parcelles.find((x) => x.id === id);
+        return p ? p.nom : "#" + id;
+      }
+
+      function renderTable() {
+        const q = (document.getElementById("search").value || "").toLowerCase();
+        const fp = document.getElementById("filterParcelle").value;
+        const fe = document.getElementById("filterEtat").value;
+        const liste = capteurs.filter(
+          (c) =>
+            (!q ||
+              c.nom.toLowerCase().includes(q) ||
+              capteurTypeLabel(c.type).toLowerCase().includes(q)) &&
+            (!fp || String(c.id_parcelle) === fp) &&
+            (!fe || c.etat === fe),
+        );
+        const t = document.getElementById("capTable");
+        t.innerHTML =
+          "<tr><th>Nom</th><th>Type</th><th>Parcelle</th><th>Emplacement</th><th>Batterie</th><th>Dernière comm.</th><th>État</th><th></th></tr>" +
+          (liste.length
+            ? liste
+                .map((c) => {
+                  return (
+                    "<tr><td><b>" +
+                    c.nom +
+                    "</b></td><td>" +
+                    capteurTypeLabel(c.type) +
+                    "</td><td>" +
+                    parcelleNom(c.id_parcelle) +
+                    "</td><td>" +
+                    (c.emplacement || "—") +
+                    "</td><td>" +
+                    (c.batterie != null ? c.batterie + "%" : "—") +
+                    "</td><td>" +
+                    (c.derniere_comm
+                      ? timeAgo(new Date(c.derniere_comm).getTime())
+                      : "—") +
+                    "</td>" +
+                    '<td><select onchange="changeEtat(' +
+                    c.id +
+                    ',this.value)">' +
+                    CAPTEUR_ETATS.map(
+                      (e) =>
+                        '<option value="' +
+                        e +
+                        '" ' +
+                        (c.etat === e ? "selected" : "") +
+                        ">" +
+                        CAPTEUR_LABELS[e] +
+                        "</option>",
+                    ).join("") +
+                    "</select></td>" +
+                    '<td class="rowactions"><button class="btn-sm" onclick="openEdit(' +
+                    c.id +
+                    ')">Modifier</button><button class="btn-sm danger" onclick="removeCapteur(' +
+                    c.id +
+                    ",'" +
+                    c.nom.replace(/'/g, "\\'") +
+                    "')\">Supprimer</button></td></tr>"
+                  );
+                })
+                .join("")
+            : '<tr><td colspan="8" style="text-align:center;color:var(--muted)">Aucun capteur trouvé</td></tr>');
+      }
+
+      async function changeEtat(id, etat) {
+        try {
+          await api("/capteurs/" + id, { method: "PATCH", body: { etat } });
+          toast("État du capteur mis à jour ✅ (diffusé en temps réel)", "ok");
+          charger();
+        } catch (e) {
+          charger();
+        }
+      }
+
+      function formFields(c) {
+        c = c || {
+          nom: "",
+          type: "humidite_sol",
+          id_parcelle: "",
+          emplacement: "",
+          batterie: 100,
+        };
+        return (
+          '<div class="field"><label>Nom du capteur</label><input id="mNom" value="' +
+          c.nom +
+          '" placeholder="ex. Sonde humidité du sol"></div>' +
+          '<div class="field"><label>Type</label><select id="mType">' +
+          CAPTEUR_TYPES.map(
+            (t) =>
+              '<option value="' +
+              t.value +
+              '" ' +
+              (c.type === t.value ? "selected" : "") +
+              ">" +
+              t.label +
+              "</option>",
+          ).join("") +
+          "</select></div>" +
+          '<div class="field"><label>Emplacement</label><input id="mEmplacement" value="' +
+          (c.emplacement || "") +
+          '" placeholder="ex. Zone racinaire — rang 3"></div>' +
+          '<div class="field"><label>Batterie (%)</label><input id="mBatterie" type="number" min="0" max="100" value="' +
+          (c.batterie != null ? c.batterie : "") +
+          '"></div>'
+        );
+      }
+
+      function openCreate() {
+        if (!parcelles.length) {
+          toast("Créez d'abord une parcelle.", "err");
+          return;
+        }
+        openModal({
+          title: "Ajouter un capteur",
+          bodyHTML:
+            '<div class="field"><label>Parcelle</label><select id="mParcelle">' +
+            parcelles
+              .map((p) => '<option value="' + p.id + '">' + p.nom + "</option>")
+              .join("") +
+            "</select></div>" +
+            formFields(),
+          okText: "Créer",
+          danger: false,
+          onOk: async () => {
+            const nom = document.getElementById("mNom").value.trim();
+            const type = document.getElementById("mType").value;
+            const b = parseInt(document.getElementById("mBatterie").value, 10);
+            if (!nom) {
+              toast("Le nom est obligatoire.", "err");
+              return;
+            }
+            try {
+              await api("/capteurs", {
+                method: "POST",
+                body: {
+                  id_parcelle: +document.getElementById("mParcelle").value,
+                  nom,
+                  type,
+                  emplacement:
+                    document.getElementById("mEmplacement").value.trim() ||
+                    null,
+                  batterie: isNaN(b) ? null : b,
+                },
+              });
+              closeModal();
+              toast("Capteur ajouté ✅", "ok");
+              charger();
+            } catch (e) {}
+          },
+        });
+      }
+      function openEdit(id) {
+        const c = capteurs.find((x) => x.id === id);
+        openModal({
+          title: "Modifier le capteur",
+          sub:
+            "Parcelle : " +
+            parcelleNom(c.id_parcelle) +
+            " (fixée à la création).",
+          bodyHTML: formFields(c),
+          okText: "Enregistrer",
+          danger: false,
+          onOk: async () => {
+            const type = document.getElementById("mType").value;
+            const b = parseInt(document.getElementById("mBatterie").value, 10);
+            try {
+              await api("/capteurs/" + id, {
+                method: "PATCH",
+                body: {
+                  nom: document.getElementById("mNom").value.trim(),
+                  type,
+                  emplacement:
+                    document.getElementById("mEmplacement").value.trim() ||
+                    null,
+                  batterie: isNaN(b) ? null : b,
+                },
+              });
+              closeModal();
+              toast("Capteur mis à jour ✅", "ok");
+              charger();
+            } catch (e) {}
+          },
+        });
+      }
+      function removeCapteur(id, nom) {
+        confirmAction(
+          "Supprimer définitivement le capteur <b>" +
+            nom +
+            "</b> et toutes ses mesures ?",
+          async () => {
+            try {
+              await api("/capteurs/" + id, { method: "DELETE" });
+              closeModal();
+              toast("Capteur supprimé.", "ok");
+              charger();
+            } catch (e) {}
+          },
+          { title: "Supprimer le capteur", okText: "Supprimer" },
+        );
+      }
+
+      /* Temps réel : signalements et changements d'état arrivent sans recharger */
+      TerraRealtime.connecter();
+      [
+        "terra:capteur_update",
+        "terra:capteur_delete",
+        "terra:alerte_update",
+      ].forEach((ev) =>
+        window.addEventListener(ev, () => {
+          charger();
+          Layout.refreshAlertBadge();
+        }),
+      );
+    </script>
+  </body>
+</html>

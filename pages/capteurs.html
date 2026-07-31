@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Capteurs IoT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div
+                class="card span12"
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 14px;
+                  flex-wrap: wrap;
+                "
+              >
+                <div>
+                  <div
+                    style="font-weight: 800; font-family: Sora; font-size: 16px"
+                  >
+                    Les capteurs
+                  </div>
+                  <div class="reco-why">
+                    Chaque capteur envoie ses mesures au backend. Signalez toute
+                    panne : l'administrateur est alerté en temps réel.
+                  </div>
+                </div>
+              </div>
+              <div
+                class="grid span12"
+                id="sensorGrid"
+                style="grid-column: span 12"
+              ></div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/realtime.js"></script>
+    <script>
+      const user = Layout.mount({
+        role: "agriculteur",
+        active: "capteurs",
+        title: "",
+        greet: "",
+        parcelleSelector: true,
+        onParcelleChange(pid) {
+          curParcelle = pid;
+          if (pid !== null) {
+            skeletonCards("sensorGrid", 3, "span4");
+            charger();
+          } else vide();
+        },
+      });
+      let curParcelle = null,
+        capteurs = [],
+        mesures = [],
+        alertes = [];
+
+      function vide() {
+        document.getElementById("sensorGrid").innerHTML =
+          '<div class="card span12 empty">Aucune parcelle — créez-en une depuis « Mes parcelles ».</div>';
+      }
+
+      async function charger() {
+        [capteurs, mesures, alertes] = await Promise.all([
+          api("/capteurs?id_parcelle=" + curParcelle, { silent: true }).catch(
+            () => [],
+          ),
+          api("/mesures?id_parcelle=" + curParcelle + "&limit=100", {
+            silent: true,
+          }).catch(() => []),
+          api("/alertes", { silent: true }).catch(() => []),
+        ]);
+        render();
+      }
+
+      /* Icône Terra selon le type physique du capteur */
+      function sIcon(type) {
+        const t = (type || "").toLowerCase();
+        if (t.includes("dht")) return ICONS.thermo;
+        if (t.includes("humidite_sol") || t.includes("capacitif"))
+          return ICONS.goutte;
+        if (t.includes("temp")) return ICONS.thermo;
+        if (t.includes("humidite_air")) return ICONS.air;
+        if (t.includes("pluie")) return ICONS.pluie;
+        return ICONS.capteur;
+      }
+
+      function derniereMesure(cid) {
+        return mesures.find((m) => m.id_capteur === cid) || null; // l'API renvoie du plus récent au plus ancien
+      }
+
+      /* Affiche TOUTES les grandeurs d'une mesure avec leur unité UI :
+         capacitif → « 27.6 % » · DHT22 → « 27.6 °C · 30 % ».
+         (la base ne stocke que les valeurs numériques) */
+      function afficherMesure(type, donnees) {
+        const v = valeursMesure(type, donnees);
+        const parts = Object.entries(v).map(
+          ([g, val]) => val + "<small> " + (UNITES[g] || "") + "</small>",
+        );
+        return parts.length
+          ? parts.join('<small style="color:var(--muted)"> · </small>')
+          : '<small style="font-size:15px;color:var(--muted)">Mesure illisible</small>';
+      }
+
+      function render() {
+        const g = document.getElementById("sensorGrid");
+        if (!capteurs.length) {
+          g.innerHTML =
+            '<div class="card span12 empty">' +
+            ticon("capteur") +
+            "<div>Aucun capteur déclaré sur cette parcelle.<br>Utilisez « Déclarer un capteur » ci-dessus.</div></div>";
+          return;
+        }
+        g.innerHTML = capteurs
+          .map((c) => {
+            const openAlert = alertes.find(
+              (a) => a.id_capteur === c.id && a.etat !== "cloture",
+            );
+            const m = derniereMesure(c.id);
+            const led =
+              c.etat === "actif"
+                ? "on"
+                : c.etat === "panne"
+                  ? "bad"
+                  : c.etat === "maintenance"
+                    ? "warn"
+                    : "";
+            const batt = c.batterie != null ? c.batterie : null;
+            return (
+              '<div class="sensor-card">' +
+              '<div class="sensor-top">' +
+              '<div class="sensor-ic"><svg viewBox="0 0 24 24" fill="none">' +
+              sIcon(c.type) +
+              "</svg></div>" +
+              '<div><div class="sensor-name">' +
+              c.nom +
+              '</div><div class="sensor-id">' +
+              capteurTypeLabel(c.type) +
+              "</div></div>" +
+              '<div class="sensor-stat ' +
+              c.etat +
+              '"><span class="led ' +
+              led +
+              '"></span><span>' +
+              (CAPTEUR_LABELS[c.etat] || c.etat) +
+              "</span></div>" +
+              "</div>" +
+              '<div class="sensor-val">' +
+              (c.etat !== "actif"
+                ? '<small style="font-size:15px;color:var(--muted)">Signal indisponible</small>'
+                : !m
+                  ? '<small style="font-size:15px;color:var(--muted)">Aucune mesure reçue</small>'
+                  : !mesureEstFraiche(m.date)
+                    ? // Même règle de fraîcheur (24h) que le dashboard et le
+                      // moteur expert : une valeur périmée ne doit jamais se
+                      // présenter avec le même style qu'une lecture fiable.
+                      '<small style="font-size:15px;color:var(--amber-ink)">⚠ Donnée obsolète (&gt;24h)</small>'
+                    : afficherMesure(c.type, m.donnees)) +
+              "</div>" +
+              '<div class="sensor-meta"><span style="display:inline-flex;align-items:center;gap:5px">' +
+              ticon("parcelle") +
+              " " +
+              (c.emplacement || "—") +
+              "</span><span>" +
+              (m
+                ? timeAgo(new Date(m.date).getTime())
+                : timeAgo(new Date(c.derniere_comm || Date.now()).getTime())) +
+              "</span></div>" +
+              (batt != null
+                ? '<div class="bar-mini"><i style="width:' +
+                  batt +
+                  "%;background:" +
+                  (batt < 20
+                    ? "var(--red)"
+                    : batt < 45
+                      ? "var(--amber)"
+                      : "var(--green)") +
+                  '"></i></div>'
+                : "") +
+              '<div class="sensor-meta"><span style="display:inline-flex;align-items:center;gap:5px">' +
+              ticon("eclair") +
+              " " +
+              (batt != null ? "Batterie " + batt + "%" : "Batterie —") +
+              "</span>" +
+              (openAlert
+                ? '<span class="chip a">Signalé — ' +
+                  (ALERTE_LABELS[openAlert.etat] || openAlert.etat) +
+                  "</span>"
+                : '<button class="btn-sm danger" onclick="signaler(' +
+                  c.id +
+                  ",'" +
+                  c.nom.replace(/'/g, "\\'") +
+                  "')\">⚠ Signaler une panne</button>") +
+              "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+      }
+
+      /* Signalement : le capteur passe en panne + alerte créée pour l'admin */
+      function signaler(cid, nom) {
+        openModal({
+          title: "Signaler une panne",
+          sub:
+            "Le capteur « " +
+            nom +
+            " » passera en état « panne » et une alerte sera transmise à l'administrateur.",
+          bodyHTML:
+            '<div class="field"><label>Décrivez le problème constaté</label><textarea id="mTexte" rows="3" style="resize:vertical" placeholder="ex. Ne remonte plus de données depuis ce matin"></textarea></div>',
+          okText: "Envoyer l'alerte",
+          danger: false,
+          onOk: async () => {
+            const texte =
+              document.getElementById("mTexte").value.trim() ||
+              "Panne signalée par " + user.nom;
+            try {
+              await api("/capteurs/" + cid + "/signaler", {
+                method: "POST",
+                body: { texte },
+              });
+              closeModal();
+              toast("Alerte envoyée à l'administrateur ✅", "ok");
+              charger();
+            } catch (e) {}
+          },
+        });
+      }
+
+      /* Déclaration d'un capteur physique installé sur la parcelle */
+      function openDeclarer() {
+        if (curParcelle === null) {
+          toast(
+            "Aucune parcelle attribuée — contactez votre administrateur.",
+            "err",
+          );
+          return;
+        }
+        openModal({
+          title: "Déclarer un capteur",
+          sub: "Renseignez le capteur physiquement installé sur la parcelle sélectionnée.",
+          bodyHTML:
+            '<div class="field"><label>Nom</label><input id="mNom" placeholder="ex. Sonde humidité rang 3"></div>' +
+            '<div class="field"><label>Type</label><select id="mType">' +
+            CAPTEUR_TYPES.map(
+              (t) => '<option value="' + t.value + '">' + t.label + "</option>",
+            ).join("") +
+            "</select></div>" +
+            '<div class="field"><label>Emplacement — optionnel</label><input id="mEmp" placeholder="ex. Zone racinaire — rang 3"></div>' +
+            '<div class="field"><label>Batterie (%) — optionnel</label><input id="mBatt" type="number" min="0" max="100" placeholder="ex. 95"></div>',
+          okText: "Déclarer",
+          danger: false,
+          onOk: async () => {
+            const nom = document.getElementById("mNom").value.trim();
+            const type = document.getElementById("mType").value;
+            const emplacement =
+              document.getElementById("mEmp").value.trim() || null;
+            const b = parseInt(document.getElementById("mBatt").value, 10);
+            if (!nom) {
+              toast("Le nom est obligatoire.", "err");
+              return;
+            }
+            try {
+              await api("/capteurs", {
+                method: "POST",
+                body: {
+                  id_parcelle: +curParcelle,
+                  nom,
+                  type,
+                  emplacement,
+                  batterie: isNaN(b) ? null : b,
+                },
+              });
+              closeModal();
+              toast("Capteur déclaré ✅", "ok");
+              charger();
+            } catch (e) {}
+          },
+        });
+      }
+
+      /* Temps réel : quand l'admin répare / change l'état d'un capteur,
+         ou traite une alerte, la page se met à jour sans rechargement. */
+      TerraRealtime.connecter();
+      [
+        "terra:capteur_update",
+        "terra:capteur_delete",
+        "terra:alerte_update",
+      ].forEach((ev) =>
+        window.addEventListener(ev, () => {
+          if (curParcelle !== null) charger();
+        }),
+      );
+      window.addEventListener("terra:mesures_bulk", () => {
+        if (curParcelle !== null) charger();
+      });
+    </script>
+  </body>
+</html>

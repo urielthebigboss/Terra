@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alertes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div class="card span12">
+                <h3>
+                  <i data-ti="cloche"></i>Centre d'alertes
+                  <span class="live-pill" style="margin-left: auto"
+                    ><span class="dot"></span>TEMPS RÉEL</span
+                  >
+                </h3>
+                <div class="toolbar">
+                  <select id="filterEtat" onchange="render()">
+                    <option value="">Tous les états</option>
+                    <option value="en_attente">En attente</option>
+                    <option value="en_intervention">En intervention</option>
+                    <option value="repare">Réparé</option>
+                    <option value="cloture">Clôturé</option>
+                  </select>
+                </div>
+                <div id="alertList"></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/realtime.js"></script>
+    <script>
+      const admin = Layout.mount({
+        role: "administrateur",
+        active: "alertes",
+        title: "Alertes",
+        greet: "",
+      });
+      let alertes = [],
+        capteurs = [],
+        agriculteurs = [];
+
+      async function charger() {
+        [alertes, capteurs, agriculteurs] = await Promise.all([
+          api("/alertes", { silent: true }).catch(() => []),
+          api("/capteurs", { silent: true }).catch(() => []),
+          api("/agriculteurs", { silent: true }).catch(() => []),
+        ]);
+        render();
+      }
+      charger();
+
+      function capteurDe(id) {
+        return capteurs.find((c) => c.id === id);
+      }
+      function agriNom(id) {
+        const a = agriculteurs.find((x) => x.id === id);
+        return a ? a.nom : "—";
+      }
+
+      function render() {
+        const fe = document.getElementById("filterEtat").value;
+        const liste = alertes.filter((a) => !fe || a.etat === fe);
+        const list = document.getElementById("alertList");
+        if (!liste.length) {
+          list.innerHTML =
+            '<div class="empty">Aucune alerte pour ce filtre. Tout va bien 🌱</div>';
+          return;
+        }
+        list.innerHTML = liste
+          .map((a) => {
+            const c = capteurDe(a.id_capteur);
+            const idx = ALERTE_ETAPES.indexOf(a.etat);
+            return (
+              '<div class="card" style="margin-bottom:14px;box-shadow:none;border-color:var(--line)">' +
+              '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+              "<div>" +
+              '<div style="font-weight:800;font-family:Sora;font-size:15.5px">' +
+              (a.texte || "Alerte capteur") +
+              "</div>" +
+              '<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Capteur : ' +
+              (c ? c.nom : "#" + (a.id_capteur || "—")) +
+              " · Signalé par " +
+              agriNom(a.id_agriculteur) +
+              " · " +
+              fmtDate(a.date) +
+              "</div>" +
+              "</div>" +
+              '<span class="chip ' +
+              ({
+                en_attente: "a",
+                en_intervention: "b",
+                repare: "g",
+                cloture: "gray",
+              }[a.etat] || "gray") +
+              '">' +
+              (ALERTE_LABELS[a.etat] || a.etat) +
+              "</span>" +
+              "</div>" +
+              '<div class="stages" style="margin-top:16px">' +
+              ALERTE_ETAPES.map(
+                (e, i) =>
+                  '<div class="stage ' +
+                  (i < idx ? "done" : i === idx ? "cur" : "") +
+                  '"><div class="bar"></div><small>' +
+                  ALERTE_LABELS[e] +
+                  "</small></div>",
+              ).join("") +
+              "</div>" +
+              '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
+              (idx < ALERTE_ETAPES.length - 1
+                ? '<button class="btn-sm primary" onclick="setEtat(' +
+                  a.id +
+                  ",'" +
+                  ALERTE_ETAPES[idx + 1] +
+                  "')\">Passer à « " +
+                  ALERTE_LABELS[ALERTE_ETAPES[idx + 1]] +
+                  " »</button>"
+                : '<span class="chip gray">Traitement terminé</span>') +
+              (a.etat !== "cloture"
+                ? '<button class="btn-sm" onclick="setEtat(' +
+                  a.id +
+                  ",'cloture')\">Clôturer directement</button>"
+                : "") +
+              "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+      }
+
+      async function setEtat(id, etat) {
+        try {
+          await api("/alertes/" + id, { method: "PATCH", body: { etat } });
+          toast(
+            etat === "repare"
+              ? "Alerte réparée ✅ — le capteur est remis en service"
+              : "Alerte mise à jour ✅",
+            "ok",
+          );
+          charger();
+          Layout.refreshAlertBadge();
+        } catch (e) {}
+      }
+
+      /* Temps réel : les signalements des agriculteurs apparaissent instantanément */
+      TerraRealtime.connecter();
+      window.addEventListener("terra:alerte_update", () => {
+        charger();
+        Layout.refreshAlertBadge();
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Utilisateurs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div class="card span12">
+                <h3>
+                  <i data-ti="equipe"></i>Comptes agriculteurs
+                  <button
+                    class="btn-sm primary"
+                    style="margin-left: auto"
+                    onclick="openCreate()"
+                  >
+                    <i data-ti="plus"></i> Créer un compte
+                  </button>
+                </h3>
+                <div class="toolbar">
+                  <input
+                    type="search"
+                    class="grow"
+                    id="search"
+                    placeholder="Rechercher un agriculteur..."
+                    oninput="renderTable()"
+                  />
+                </div>
+                <div class="table-wrap">
+                  <table class="htable" id="userTable"></table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+      const admin = Layout.mount({
+        role: "administrateur",
+        active: "utilisateurs",
+        title: "Utilisateurs",
+        greet: "",
+      });
+      let agriculteurs = [],
+        parcelles = [];
+
+      async function charger() {
+        [agriculteurs, parcelles] = await Promise.all([
+          api("/agriculteurs", { silent: true }).catch(() => []),
+          api("/parcelles", { silent: true }).catch(() => []),
+        ]);
+        renderTable();
+      }
+      charger();
+
+      function parcellesDe(idAgri) {
+        return parcelles.filter((p) => p.id_agriculteur === idAgri);
+      }
+      function agriNom(id) {
+        const a = agriculteurs.find((x) => x.id === id);
+        return a ? a.nom : "—";
+      }
+
+      /* Cases à cocher d'attribution : les parcelles existantes
+         (hors celles déjà à cet agriculteur), avec leur propriétaire
+         actuel — cocher = réattribuer via PATCH /parcelles/{id}. */
+      function parcelleCheckboxes(exclureAgriId) {
+        const dispo = parcelles.filter(
+          (p) => p.id_agriculteur !== exclureAgriId,
+        );
+        if (!dispo.length)
+          return '<div class="reco-why">Aucune parcelle disponible — créez-en depuis la page « Parcelles ».</div>';
+        return dispo
+          .map(
+            (p) =>
+              '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13.5px;font-weight:600">' +
+              '<input type="checkbox" class="mParc" value="' +
+              p.id +
+              '" style="width:auto"> ' +
+              p.nom +
+              ' <span class="chip gray">actuellement : ' +
+              agriNom(p.id_agriculteur) +
+              "</span></label>",
+          )
+          .join("");
+      }
+      async function attribuerParcelles(idAgri) {
+        const ids = [...document.querySelectorAll(".mParc:checked")].map(
+          (i) => +i.value,
+        );
+        for (const pid of ids)
+          await api("/parcelles/" + pid, {
+            method: "PATCH",
+            body: { id_agriculteur: idAgri },
+          });
+        return ids.length;
+      }
+
+      function renderTable() {
+        const q = (document.getElementById("search").value || "").toLowerCase();
+        const users = agriculteurs.filter(
+          (u) =>
+            !q ||
+            u.nom.toLowerCase().includes(q) ||
+            (u.email || "").toLowerCase().includes(q),
+        );
+        const t = document.getElementById("userTable");
+        t.innerHTML =
+          "<tr><th>Nom</th><th>Email</th><th>Parcelles</th><th>Créé le</th><th></th></tr>" +
+          (users.length
+            ? users
+                .map((u) => {
+                  const parc = parcellesDe(u.id);
+                  return (
+                    "<tr><td><b>" +
+                    u.nom +
+                    "</b></td><td>" +
+                    (u.email || "—") +
+                    "</td>" +
+                    "<td>" +
+                    (parc.length
+                      ? parc
+                          .map(
+                            (p) =>
+                              '<span class="chip g" style="margin:2px">' +
+                              p.nom +
+                              "</span>",
+                          )
+                          .join("")
+                      : '<span class="chip gray">Aucune</span>') +
+                    "</td>" +
+                    "<td>" +
+                    (u.cree_le ? fmtDate(u.cree_le) : "—") +
+                    "</td>" +
+                    '<td class="rowactions"><button class="btn-sm" onclick="openEdit(' +
+                    u.id +
+                    ')">Modifier</button><button class="btn-sm danger" onclick="removeUser(' +
+                    u.id +
+                    ",'" +
+                    u.nom.replace(/'/g, "\\'") +
+                    "')\">Supprimer</button></td></tr>"
+                  );
+                })
+                .join("")
+            : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Aucun agriculteur trouvé</td></tr>');
+      }
+
+      function openCreate() {
+        openModal({
+          title: "Créer un compte agriculteur",
+          sub: "Le compte est créé dans Supabase Auth : communiquez ensuite l'email et le mot de passe à l'agriculteur. Attribuez-lui ses parcelles dès maintenant (ou plus tard).",
+          bodyHTML:
+            '<div class="field"><label>Nom complet</label><input id="mNom" placeholder="ex. Kouassi Yao"></div>' +
+            '<div class="field"><label>Email de connexion</label><input id="mEmail" type="email" placeholder="ex. kyao@terra.ci"></div>' +
+            '<div class="field"><label>Mot de passe (min. 6 caractères)</label><input id="mPass" type="text" placeholder="mot de passe attribué"></div>' +
+            '<div class="field"><label>Parcelles à attribuer</label><div id="mParcBox">' +
+            parcelleCheckboxes(null) +
+            "</div></div>",
+          okText: "Créer le compte",
+          danger: false,
+          onOk: async () => {
+            const nom = document.getElementById("mNom").value.trim();
+            const email = document.getElementById("mEmail").value.trim();
+            const mot_de_passe = document.getElementById("mPass").value.trim();
+            if (!nom || !email || !mot_de_passe) {
+              toast("Merci de renseigner tous les champs.", "err");
+              return;
+            }
+            if (mot_de_passe.length < 6) {
+              toast(
+                "Le mot de passe doit contenir au moins 6 caractères.",
+                "err",
+              );
+              return;
+            }
+            try {
+              const nouveau = await api("/agriculteurs", {
+                method: "POST",
+                body: { nom, email, mot_de_passe },
+              });
+              const n = await attribuerParcelles(nouveau.id);
+              closeModal();
+              toast(
+                "Compte créé ✅" +
+                  (n ? " " + n + " parcelle(s) attribuée(s)." : "") +
+                  " Communiquez les identifiants à l'agriculteur.",
+                "ok",
+              );
+              charger();
+            } catch (e) {}
+          },
+        });
+      }
+
+      function openEdit(id) {
+        const u = agriculteurs.find((x) => x.id === id);
+        const siennes = parcellesDe(id);
+        openModal({
+          title: "Modifier le compte",
+          sub: "Laissez le mot de passe vide pour ne pas le changer.",
+          bodyHTML:
+            '<div class="field"><label>Nom complet</label><input id="mNom" value="' +
+            u.nom +
+            '"></div>' +
+            '<div class="field"><label>Email</label><input id="mEmail" value="' +
+            (u.email || "") +
+            '" disabled></div>' +
+            '<div class="field"><label>Nouveau mot de passe (optionnel)</label><input id="mPass" type="text" placeholder="min. 6 caractères"></div>' +
+            '<div class="field"><label>Ses parcelles</label><div>' +
+            (siennes.length
+              ? siennes
+                  .map(
+                    (p) =>
+                      '<span class="chip g" style="margin:2px">' +
+                      p.nom +
+                      "</span>",
+                  )
+                  .join("")
+              : '<span class="chip gray">Aucune</span>') +
+            '</div><div class="reco-why" style="margin-top:6px">Pour retirer une parcelle, réattribuez-la depuis la page « Parcelles ».</div></div>' +
+            '<div class="field"><label>Attribuer des parcelles supplémentaires</label><div id="mParcBox">' +
+            parcelleCheckboxes(id) +
+            "</div></div>",
+          okText: "Enregistrer",
+          danger: false,
+          onOk: async () => {
+            const nom = document.getElementById("mNom").value.trim();
+            const mot_de_passe = document.getElementById("mPass").value.trim();
+            if (!nom) {
+              toast("Le nom est obligatoire.", "err");
+              return;
+            }
+            if (mot_de_passe && mot_de_passe.length < 6) {
+              toast(
+                "Le mot de passe doit contenir au moins 6 caractères.",
+                "err",
+              );
+              return;
+            }
+            const body = { nom };
+            if (mot_de_passe) body.mot_de_passe = mot_de_passe;
+            try {
+              await api("/agriculteurs/" + id, { method: "PATCH", body });
+              await attribuerParcelles(id);
+              closeModal();
+              toast("Compte mis à jour ✅", "ok");
+              charger();
+            } catch (e) {}
+          },
+        });
+      }
+
+      function removeUser(id, nom) {
+        confirmAction(
+          "Supprimer définitivement le compte de <b>" +
+            nom +
+            "</b> ?<br>Ses parcelles, capteurs, mesures et prescriptions seront supprimés en cascade.",
+          async () => {
+            try {
+              await api("/agriculteurs/" + id, { method: "DELETE" });
+              closeModal();
+              toast("Compte supprimé.", "ok");
+              charger();
+            } catch (e) {}
+          },
+          { title: "Supprimer le compte", okText: "Supprimer" },
+        );
+      }
+    </script>
+  </body>
+</html>

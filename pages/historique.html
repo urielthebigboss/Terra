@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Historique</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div class="card span4 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--blue-soft); color: var(--blue)"
+                >
+                  <i data-ti="cuve"></i>
+                </div>
+                <div class="kpi-val">
+                  <span id="hWeek">--</span><small>L/m²</small>
+                </div>
+                <div class="kpi-lab">Eau appliquée</div>
+              </div>
+              <div class="card span4 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--green-soft); color: var(--green-d)"
+                >
+                  <i data-ti="goutte"></i>
+                </div>
+                <div class="kpi-val" id="hIrrig">--</div>
+                <div class="kpi-lab">Irrigations effectuées</div>
+              </div>
+              <div class="card span4 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--amber-soft); color: var(--amber-ink)"
+                >
+                  <i data-ti="racine"></i>
+                </div>
+                <div class="kpi-val">
+                  <span id="hMoy">--</span><small>%</small>
+                </div>
+                <div class="kpi-lab">Humidité moyenne du sol</div>
+              </div>
+
+              <div class="card span7">
+                <h3><i data-ti="cuve"></i>Eau appliquée par jour</h3>
+                <div style="height: 250px">
+                  <canvas id="chartWater"></canvas>
+                </div>
+              </div>
+              <div class="card span5">
+                <h3>
+                  <i data-ti="courbe"></i>Humidité &amp; température moyennes /
+                  jour
+                </h3>
+                <div style="height: 250px">
+                  <canvas id="chartTrend"></canvas>
+                </div>
+              </div>
+
+              <div class="card span12">
+                <h3>
+                  <i data-ti="calendrier"></i>Journal complet
+                  <button class="dlbtn" onclick="downloadHistory()">
+                    <i data-ti="telecharger"></i> Télécharger (CSV)
+                  </button>
+                </h3>
+                <div class="toolbar">
+                  <input
+                    type="search"
+                    class="grow"
+                    id="search"
+                    placeholder="Rechercher (type, détail...)"
+                    oninput="applyFilters()"
+                  />
+                  <select id="filterType" onchange="applyFilters()">
+                    <option value="">Tous les types</option>
+                    <option value="irrigation">Irrigation</option>
+                    <option value="mesure">Mesure IoT</option>
+                    <option value="capteur">Capteur / alerte</option>
+                  </select>
+                  <select id="sortBy" onchange="applyFilters()">
+                    <option value="date_desc">Date (récent → ancien)</option>
+                    <option value="date_asc">Date (ancien → récent)</option>
+                    <option value="eau_desc">
+                      Eau appliquée (décroissant)
+                    </option>
+                  </select>
+                </div>
+                <div class="table-wrap">
+                  <table class="htable" id="histTable"></table>
+                </div>
+                <div class="pagination" id="pagination"></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/charts.js"></script>
+    <script>
+      const user = Layout.mount({
+        role: "agriculteur",
+        active: "historique",
+        title: "",
+        greet: "",
+        parcelleSelector: true,
+        onParcelleChange(pid) {
+          curParcelle = pid;
+          if (pid !== null) loadData();
+          else videTout();
+        },
+      });
+      let curParcelle = null,
+        allEvents = [],
+        filtered = [],
+        page = 1,
+        perPage = 8;
+
+      function videTout() {
+        allEvents = [];
+        applyFilters();
+      }
+
+      async function loadData() {
+        let capteurs = [],
+          mesures = [],
+          prescriptions = [],
+          alertes = [];
+        try {
+          [capteurs, mesures, prescriptions, alertes] = await Promise.all([
+            api("/capteurs?id_parcelle=" + curParcelle, { silent: true }).catch(
+              () => [],
+            ),
+            api("/mesures?id_parcelle=" + curParcelle + "&limit=1000", {
+              silent: true,
+            }).catch(() => []),
+            api("/prescriptions?id_parcelle=" + curParcelle + "&limit=200", {
+              silent: true,
+            }).catch(() => []),
+            api("/alertes", { silent: true }).catch(() => []),
+          ]);
+        } catch (e) {}
+        const typeDe = (id) => (capteurs.find((c) => c.id === id) || {}).type;
+        const nomDe = (id) =>
+          (capteurs.find((c) => c.id === id) || {}).nom || "#" + id;
+        const idsParcelle = capteurs.map((c) => c.id);
+
+        /* --- Agrégat quotidien des mesures (humidité / température) ---
+           Lecture via valeursMesure (culture.js) : gère le format
+           multi-grandeurs (DHT22 = température + humidité air) et
+           les anciens enregistrements. --- */
+        const parJour = {};
+        mesures.forEach((m) => {
+          const d = String(m.date).slice(0, 10);
+          const j = (parJour[d] = parJour[d] || { hum: [], temp: [] });
+          const v = valeursMesure(typeDe(m.id_capteur), m.donnees);
+          if (v.humidite_sol !== undefined) j.hum.push(v.humidite_sol);
+          if (v.temperature !== undefined) j.temp.push(v.temperature);
+        });
+        const jours = Object.keys(parJour).sort();
+        const moy = (a) =>
+          a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+
+        /* --- Événements du journal --- */
+        allEvents = [];
+        jours.forEach((d) => {
+          const j = parJour[d];
+          const hm = moy(j.hum),
+            tm = moy(j.temp);
+          if (hm !== null || tm !== null)
+            allEvents.push({
+              date: d,
+              type: "mesure",
+              detail:
+                "Relevés IoT — " +
+                (hm !== null ? "humidité moy. " + hm.toFixed(0) + "%" : "") +
+                (hm !== null && tm !== null ? ", " : "") +
+                (tm !== null ? "température moy. " + tm.toFixed(1) + "°C" : ""),
+              eauL: 0,
+            });
+        });
+        prescriptions
+          .filter((p) => p.etat === "faite")
+          .forEach((p) =>
+            allEvents.push({
+              date: p.date_faite || p.date,
+              type: "irrigation",
+              detail:
+                p.action + (p.justification ? " — " + p.justification : ""),
+              eauL: p.volume_eau || 0,
+            }),
+          );
+        alertes
+          .filter((a) => idsParcelle.includes(a.id_capteur))
+          .forEach((a) =>
+            allEvents.push({
+              date: String(a.date).slice(0, 10),
+              type: "capteur",
+              detail:
+                (a.texte || "Alerte capteur " + nomDe(a.id_capteur)) +
+                " (" +
+                (ALERTE_LABELS[a.etat] || a.etat) +
+                ")",
+              eauL: 0,
+            }),
+          );
+
+        /* --- KPIs --- */
+        const faites = prescriptions.filter((p) => p.etat === "faite");
+        document.getElementById("hWeek").textContent = Math.round(
+          faites.reduce((s, p) => s + (p.volume_eau || 0), 0),
+        );
+        document.getElementById("hIrrig").textContent = faites.filter(
+          (p) => p.volume_eau > 0,
+        ).length;
+        const humToutes = mesures
+          .map(
+            (m) => valeursMesure(typeDe(m.id_capteur), m.donnees).humidite_sol,
+          )
+          .filter((v) => v !== undefined);
+        document.getElementById("hMoy").textContent = humToutes.length
+          ? Math.round(moy(humToutes))
+          : "--";
+
+        buildCharts(jours, parJour, faites, moy);
+        page = 1;
+        applyFilters();
+      }
+
+      function buildCharts(jours, parJour, faites, moy) {
+        document.querySelectorAll("#chartWater,#chartTrend").forEach((c) => {
+          const ex = Chart.getChart(c);
+          if (ex) ex.destroy();
+        });
+        /* Eau par jour depuis les prescriptions faites */
+        const eauParJour = {};
+        faites.forEach((p) => {
+          const d = p.date_faite || p.date;
+          eauParJour[d] = (eauParJour[d] || 0) + (p.volume_eau || 0);
+        });
+        const joursEau = Object.keys(eauParJour).sort();
+        makeBarChart(
+          "chartWater",
+          joursEau.map(fmtDate),
+          joursEau.map((d) => +eauParJour[d].toFixed(1)),
+          cssv("--blue"),
+          { unit: " L/m²" },
+        );
+        /* Tendances quotidiennes des mesures */
+        makeLineChart("chartTrend", jours.map(fmtDate), [
+          {
+            label: "Humidité moy. (%)",
+            data: jours.map((d) => {
+              const v = moy(parJour[d].hum);
+              return v === null ? null : +v.toFixed(1);
+            }),
+            borderColor: cssv("--green"),
+            backgroundColor: "rgba(21,154,100,.12)",
+            fill: true,
+            tension: 0.4,
+            pointRadius: 2,
+            borderWidth: 2.5,
+          },
+          {
+            label: "Température moy. (°C)",
+            data: jours.map((d) => {
+              const v = moy(parJour[d].temp);
+              return v === null ? null : +v.toFixed(1);
+            }),
+            borderColor: cssv("--red"),
+            backgroundColor: "transparent",
+            fill: false,
+            tension: 0.4,
+            pointRadius: 2,
+            borderWidth: 2,
+          },
+        ]);
+      }
+
+      function applyFilters() {
+        const q = (document.getElementById("search").value || "").toLowerCase();
+        const type = document.getElementById("filterType").value;
+        const sort = document.getElementById("sortBy").value;
+        filtered = allEvents.filter(
+          (e) =>
+            (!type || e.type === type) &&
+            (!q || e.detail.toLowerCase().includes(q) || e.type.includes(q)),
+        );
+        if (sort === "date_asc")
+          filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
+        else if (sort === "eau_desc") filtered.sort((a, b) => b.eauL - a.eauL);
+        else filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+        page = 1;
+        renderTable();
+      }
+
+      const TYPE_CHIP = { irrigation: "g", mesure: "b", capteur: "r" };
+      const TYPE_LABEL = {
+        irrigation: "Irrigation",
+        mesure: "Mesure IoT",
+        capteur: "Capteur / alerte",
+      };
+
+      function renderTable() {
+        const start = (page - 1) * perPage;
+        const rows = filtered.slice(start, start + perPage);
+        const t = document.getElementById("histTable");
+        if (!filtered.length) {
+          t.innerHTML =
+            '<tr><td class="empty">Aucun événement pour cette parcelle.</td></tr>';
+          document.getElementById("pagination").innerHTML = "";
+          return;
+        }
+        t.innerHTML =
+          "<tr><th>Date</th><th>Type</th><th>Détail</th><th>Eau</th></tr>" +
+          rows
+            .map(
+              (e) =>
+                "<tr><td>" +
+                fmtDate(e.date) +
+                '</td><td><span class="chip ' +
+                TYPE_CHIP[e.type] +
+                '">' +
+                TYPE_LABEL[e.type] +
+                '</span></td><td style="color:var(--muted)">' +
+                e.detail +
+                "</td><td>" +
+                (e.eauL ? e.eauL + " L/m²" : "—") +
+                "</td></tr>",
+            )
+            .join("");
+        buildPagination();
+      }
+      function buildPagination() {
+        const total = Math.ceil(filtered.length / perPage) || 1;
+        let html =
+          '<span class="pag-info">' + filtered.length + " résultat(s)</span>";
+        html +=
+          "<button " +
+          (page <= 1 ? "disabled" : "") +
+          ' onclick="gotoPage(' +
+          (page - 1) +
+          ')">‹</button>';
+        for (let i = 1; i <= total; i++)
+          html +=
+            '<button class="' +
+            (i === page ? "on" : "") +
+            '" onclick="gotoPage(' +
+            i +
+            ')">' +
+            i +
+            "</button>";
+        html +=
+          "<button " +
+          (page >= total ? "disabled" : "") +
+          ' onclick="gotoPage(' +
+          (page + 1) +
+          ')">›</button>';
+        document.getElementById("pagination").innerHTML = html;
+      }
+      function gotoPage(p) {
+        page = p;
+        renderTable();
+      }
+
+      function downloadHistory() {
+        if (!filtered.length) {
+          toast("Aucune donnée à exporter.", "err");
+          return;
+        }
+        const rows = [
+          ["Date", "Type", "Détail", "Eau (L/m²)"].map(csvEscape).join(";"),
+        ];
+        filtered.forEach((e) =>
+          rows.push(
+            [fmtDate(e.date), TYPE_LABEL[e.type], e.detail, e.eauL || 0]
+              .map(csvEscape)
+              .join(";"),
+          ),
+        );
+        downloadCSV(
+          rows,
+          "historique_terra_" + new Date().toISOString().slice(0, 10) + ".csv",
+        );
+      }
+    </script>
+  </body>
+</html>

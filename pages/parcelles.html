@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mes parcelles</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div
+                class="card span12"
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 14px;
+                  flex-wrap: wrap;
+                "
+              >
+                <div>
+                  <div
+                    style="font-weight: 800; font-family: Sora; font-size: 16px"
+                  >
+                    Vos parcelles
+                  </div>
+                  <div class="reco-why">
+                    Les parcelles vous sont attribuées par l'administrateur,
+                    vous saisissez la date de plantation pour démarrer le suivi
+                    du cycle.
+                  </div>
+                </div>
+              </div>
+              <div
+                class="grid span12"
+                id="parcellesGrid"
+                style="grid-column: span 12"
+              ></div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+      const user = Layout.mount({
+        role: "agriculteur",
+        active: "parcelles",
+        title: "",
+        greet: "",
+      });
+      let parcelles = [];
+
+      skeletonCards("parcellesGrid", 3, "span4");
+      chargement();
+
+      async function chargement() {
+        try {
+          await chargerProfilCulture(); // stades réels avant computeStade
+          parcelles = await api("/parcelles");
+        } catch (e) {
+          parcelles = [];
+        }
+        renderParcelles();
+        Layout.hydrateIcons();
+      }
+
+      function renderParcelles() {
+        const g = document.getElementById("parcellesGrid");
+        if (!parcelles.length) {
+          g.innerHTML =
+            '<div class="card span12 empty">' +
+            ticon("parcelle") +
+            "<div>Aucune parcelle ne vous est attribuée pour le moment.<br>Contactez votre administrateur : c'est lui qui crée et attribue les parcelles.</div></div>";
+          return;
+        }
+        g.innerHTML = parcelles
+          .map((p) => {
+            const info = computeStade(p);
+            const pct = Math.min(
+              100,
+              Math.round((info.jourActuel / info.totalJours) * 100),
+            );
+            return (
+              '<div class="card span4">' +
+              "<h3>" +
+              ticon("tomate") +
+              " " +
+              p.nom +
+              ' <span class="chip g" style="margin-left:auto">' +
+              p.culture +
+              "</span></h3>" +
+              '<div style="display:flex;justify-content:space-between;font-size:13.5px;color:var(--muted);margin-bottom:6px">' +
+              '<span>Superficie : <b style="color:var(--ink)">' +
+              (p.superficie != null ? p.superficie + " ha" : "—") +
+              "</b></span>" +
+              '<span>Stade : <b style="color:var(--ink)">' +
+              info.stade.label +
+              "</b></span>" +
+              "</div>" +
+              '<div style="display:flex;justify-content:space-between;font-size:13.5px;color:var(--muted);margin-bottom:10px">' +
+              '<span>Nombre de plants : <b style="color:var(--ink)">' +
+              (p.nombre_plant != null ? p.nombre_plant : "—") +
+              "</b></span>" +
+              "</div>" +
+              '<div class="bar-mini" style="margin-top:0"><i style="width:' +
+              pct +
+              '%"></i></div>' +
+              '<div style="font-size:11.5px;color:var(--muted);margin-top:6px">Aventure du cycle : <b style="color:var(--green-d)">' +
+              pct +
+              "%</b> — jour " +
+              info.jourActuel +
+              " sur " +
+              info.totalJours +
+              "</div>" +
+              '<div class="field" style="margin-top:16px"><label>Date de plantation</label><input type="date" id="date_' +
+              p.id +
+              '" value="' +
+              p.date_plantation +
+              '"></div>' +
+              '<div style="display:flex;gap:8px">' +
+              '<button class="btn-sm primary" style="flex:1;justify-content:center" onclick="saveDate(' +
+              p.id +
+              ')">Enregistrer</button>' +
+              '<button class="btn-sm" style="flex:1;justify-content:center" onclick="consulter(' +
+              p.id +
+              ')">Consulter →</button>' +
+              "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+      }
+
+      /* Seule action de l'agriculteur sur sa parcelle : la date de plantation
+   (le backend refuse tout autre champ pour ce rôle). */
+      async function saveDate(pid) {
+        const v = document.getElementById("date_" + pid).value;
+        if (!v) {
+          toast("Veuillez choisir une date valide.", "err");
+          return;
+        }
+        try {
+          await api("/parcelles/" + pid, {
+            method: "PATCH",
+            body: { date_plantation: v },
+          });
+          toast("Date de plantation mise à jour ✅", "ok");
+          chargement();
+        } catch (e) {}
+      }
+      function consulter(pid) {
+        localStorage.setItem("terra_active_parcelle_" + user.id, pid);
+        location.href = "dashboard.html";
+      }
+    </script>
+  </body>
+</html>

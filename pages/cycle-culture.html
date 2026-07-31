@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cycle de culture</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div class="card span4 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--green-soft); color: var(--green-d)"
+                >
+                  <i data-ti="graine"></i>
+                </div>
+                <div class="kpi-val" id="kJour">--</div>
+                <div class="kpi-lab">Jour depuis la plantation</div>
+              </div>
+              <div class="card span4 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--blue-soft); color: var(--blue)"
+                >
+                  <i data-ti="feuille"></i>
+                </div>
+                <div class="kpi-val" id="kProchain">--</div>
+                <div class="kpi-lab">Prochain stade</div>
+              </div>
+              <div class="card span4 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--amber-soft); color: var(--amber-ink)"
+                >
+                  <i data-ti="historique"></i>
+                </div>
+                <div class="kpi-val">
+                  <span id="kRestant">--</span><small>j</small>
+                </div>
+                <div class="kpi-lab">Avant le changement de stade</div>
+              </div>
+
+              <div class="card span12">
+                <h3>
+                  <i data-ti="racine"></i>L'évolution de la culture
+                  <span id="cultureNom"></span>
+                </h3>
+                <div class="bar-mini" style="margin: 6px 0 22px">
+                  <i id="globalBar" style="width: 0%"></i>
+                </div>
+                <div class="cycle-track" id="cycleTrack"></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+      const user = Layout.mount({
+        role: "agriculteur",
+        active: "cycle",
+        title: "",
+        greet: "",
+        parcelleSelector: true,
+        onParcelleChange(pid) {
+          if (pid !== null) render(pid);
+          else empty();
+        },
+      });
+
+      function empty() {
+        document.getElementById("cycleTrack").innerHTML =
+          '<div class="empty">Aucune parcelle créez-en une depuis « Mes parcelles ».</div>';
+      }
+
+      function render(pid) {
+        const p = Layout.parcelles.find((x) => String(x.id) === String(pid));
+        if (!p) {
+          empty();
+          return;
+        }
+        const cycle = dbGetCycle();
+        const info = computeStade(p);
+        const pct = Math.min(
+          100,
+          Math.round((info.jourActuel / info.totalJours) * 100),
+        );
+
+        document.getElementById("cultureNom").textContent =
+          p.culture + "" + p.nom;
+        document.getElementById("kJour").textContent = info.jourActuel;
+        document.getElementById("kProchain").textContent = info.prochain
+          ? info.prochain.label
+          : "Fin de cycle";
+        document.getElementById("kRestant").textContent = info.prochain
+          ? info.joursRestants
+          : 0;
+
+        document.getElementById("globalBar").style.width = pct + "%";
+
+        const track = document.getElementById("cycleTrack");
+        track.innerHTML = cycle
+          .map((s, i) => {
+            const state = i < info.idx ? "done" : i === info.idx ? "cur" : "";
+            const num = i < info.idx ? "✓" : i + 1;
+            let meta = "";
+            if (i === info.idx) {
+              meta =
+                '<span class="chip g">Jour ' +
+                (info.jourDansStade + 1) +
+                " / " +
+                s.dureeJours +
+                "</span>" +
+                (info.prochain
+                  ? '<span class="chip b">Prochain : ' +
+                    info.prochain.label +
+                    " dans " +
+                    info.joursRestants +
+                    " j</span>"
+                  : '<span class="chip b">Dernier stade du cycle</span>') +
+                '<span class="chip a">Seuil bas ' +
+                s.seuilBas +
+                "% · Cible " +
+                s.seuilCible +
+                "%</span>";
+            } else if (i < info.idx) {
+              meta =
+                '<span class="chip g" style="display:inline-flex;align-items:center;gap:5px">' +
+                ticon("badge") +
+                ' Stade franchi</span><span class="chip gray">' +
+                s.dureeJours +
+                " j</span>";
+            } else {
+              meta =
+                '<span class="chip gray">À venir — ' +
+                s.dureeJours +
+                " j prévus</span>";
+            }
+            return (
+              '<div class="cycle-step ' +
+              state +
+              '">' +
+              '<div class="node-col"><div class="node">' +
+              num +
+              "</div>" +
+              (i < cycle.length - 1 ? '<div class="connector"></div>' : "") +
+              "</div>" +
+              '<div class="body"><div class="title">' +
+              s.label +
+              '</div><div class="desc">' +
+              s.desc +
+              '</div><div class="meta">' +
+              meta +
+              "</div></div>" +
+              "</div>"
+            );
+          })
+          .join("");
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recommandations</title>
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div class="card span12">
+                <h3><i data-ti="goutte"></i>Missions du jour</h3>
+                <div id="todoList"></div>
+              </div>
+              <div class="card span12">
+                <h3><i data-ti="check"></i>Missions accomplies récemment</h3>
+                <div id="doneList"></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/realtime.js"></script>
+    <script>
+      const user = Layout.mount({
+        role: "agriculteur",
+        active: "recommandations",
+        title: "",
+        greet: "",
+        parcelleSelector: true,
+        onParcelleChange(pid) {
+          curParcelle = pid;
+          if (pid !== null) charger();
+          else vide();
+        },
+      });
+      let curParcelle = null,
+        prescriptions = [];
+      const PRIO_CHIP = { haute: "r", moyenne: "a", basse: "gray" };
+      const PRIO_LABEL = {
+        haute: "Priorité haute",
+        moyenne: "Priorité moyenne",
+        basse: "Priorité basse",
+      };
+
+      function vide() {
+        document.getElementById("todoList").innerHTML =
+          '<div class="empty">Aucune parcelle sélectionnée.</div>';
+        document.getElementById("doneList").innerHTML = "";
+      }
+
+      async function charger() {
+        try {
+          prescriptions = await api(
+            "/prescriptions?id_parcelle=" + curParcelle + "&limit=100",
+          );
+        } catch (e) {
+          prescriptions = [];
+        }
+        render();
+      }
+
+      function render() {
+        const todo = prescriptions.filter((p) => p.etat === "a_faire");
+        const done = prescriptions
+          .filter((p) => p.etat === "faite")
+          .slice(0, 8);
+
+        const todoEl = document.getElementById("todoList");
+        todoEl.innerHTML = todo.length
+          ? todo.map((p) => cardTodo(p)).join("")
+          : '<div class="empty">Aucune action en attente — tout est sous contrôle 🌱</div>';
+
+        const doneEl = document.getElementById("doneList");
+        doneEl.innerHTML = done.length
+          ? '<div class="table-wrap"><table class="htable"><tr><th>Fait le</th><th>Recommandation</th><th>Volume</th><th>Pourquoi</th></tr>' +
+            done
+              .map((p) => {
+                const f = formatPrescription(p);
+                return (
+                  "<tr><td>" +
+                  fmtDate(p.date_faite || p.date) +
+                  "</td><td>" +
+                  f.action +
+                  "</td><td>" +
+                  (p.volume_eau ? p.volume_eau + " L/m²" : "—") +
+                  '</td><td style="color:var(--muted)">' +
+                  (f.pourquoi || "—") +
+                  "</td></tr>"
+                );
+              })
+              .join("") +
+            "</table></div>"
+          : '<div class="empty">Aucune mission accomplie pour cette parcelle.</div>';
+      }
+
+      function cardTodo(p) {
+        const f = formatPrescription(p);
+        return (
+          '<div class="mission prio-' +
+          (p.priorite || "moyenne") +
+          '">' +
+          '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+          '<div style="min-width:0;flex:1">' +
+          // Volet 1 : POURQUOI
+          '<div class="reco-bullet"><b>' +
+          f.pourquoiLabel +
+          "</b> " +
+          esc(f.pourquoi) +
+          "</div>" +
+          // Volet 2 : RECOMMANDATION / ACTION REQUISE
+          '<div class="reco-bullet" style="margin-top:8px"><b>' +
+          f.actionLabel +
+          " :</b> " +
+          esc(f.action) +
+          "</div>" +
+          // Puces (priorité, volume) + pied daté
+          '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<span class="chip ' +
+          (PRIO_CHIP[p.priorite] || "a") +
+          '">' +
+          (PRIO_LABEL[p.priorite] || "Priorité moyenne") +
+          "</span>" +
+          (p.duree_irrigation_minutes
+            ? '<span class="chip b">' +
+              p.duree_irrigation_minutes +
+              " min d'arrosage</span>"
+            : "") +
+          "</div>" +
+          '<div style="margin-top:8px;font-size:12px;color:var(--muted)">' +
+          f.footer +
+          "</div>" +
+          "</div>" +
+          '<div style="display:flex;align-items:center"><button class="btn-sm primary" onclick="faire(' +
+          p.id +
+          ')">' +
+          ticon("check") +
+          " Mission accomplie</button></div>" +
+          "</div>" +
+          "</div>"
+        );
+      }
+
+      async function faire(id) {
+        try {
+          await api("/prescriptions/" + id + "/faite", { method: "POST" });
+          toast("Mission accomplie 🌱 — votre plante vous remercie", "ok");
+          charger();
+        } catch (e) {}
+      }
+
+      /* Temps réel : si le backend pousse des prescriptions, la liste se rafraîchit */
+      TerraRealtime.connecter();
+      window.addEventListener("terra:prescriptions_bulk", () => {
+        if (curParcelle !== null) charger();
+      });
+      window.addEventListener("terra:prescription_update", () => {
+        if (curParcelle !== null) charger();
+      });
+    </script>
+  </body>
+</html>

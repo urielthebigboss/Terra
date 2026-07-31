@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vue d'ensemble</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div class="card span3 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--green-soft); color: var(--green-d)"
+                >
+                  <i data-ti="equipe"></i>
+                </div>
+                <div class="kpi-val" id="kUsers">--</div>
+                <div class="kpi-lab">Agriculteurs</div>
+              </div>
+              <div class="card span3 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--blue-soft); color: var(--blue)"
+                >
+                  <i data-ti="parcelle"></i>
+                </div>
+                <div class="kpi-val" id="kParcelles">--</div>
+                <div class="kpi-lab">Parcelles suivies</div>
+              </div>
+              <div class="card span3 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--amber-soft); color: var(--amber-ink)"
+                >
+                  <i data-ti="capteur"></i>
+                </div>
+                <div class="kpi-val" id="kCapteurs">--</div>
+                <div class="kpi-lab">Capteurs déployés</div>
+              </div>
+              <div class="card span3 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--red-soft); color: var(--red-ink)"
+                >
+                  <i data-ti="cloche"></i>
+                </div>
+                <div class="kpi-val" id="kAlertes">--</div>
+                <div class="kpi-lab">Alertes ouvertes</div>
+              </div>
+
+              <div class="card span7">
+                <h3><i data-ti="capteur"></i>État du parc de capteurs</h3>
+                <div style="height: 250px">
+                  <canvas id="chartCapteurs"></canvas>
+                </div>
+              </div>
+              <div class="card span5">
+                <h3>
+                  <i data-ti="cuve"></i>Eau appliquée par jour sur toutes
+                  parcelles
+                </h3>
+                <div style="height: 250px"><canvas id="chartEau"></canvas></div>
+              </div>
+
+              <div class="card span12">
+                <div class="reco-why" style="margin-bottom: 12px">
+                  Le moteur calcule l'évapotranspiration (ET₀ × Kc, méthode
+                  FAO), la croise avec l'humidité du sol mesurée, le stade de la
+                  plante et la pluie prévue, puis génère les prescriptions
+                  d'irrigation. Exécution automatique toutes les 10 h.
+                </div>
+                <div id="moteurResult"></div>
+              </div>
+
+              <div class="card span12">
+                <h3><i data-ti="cloche"></i>Dernières alertes</h3>
+                <div class="table-wrap">
+                  <table class="htable" id="alertTable"></table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/charts.js"></script>
+    <script src="../assets/js/realtime.js"></script>
+    <script>
+      const admin = Layout.mount({
+        role: "administrateur",
+        active: "dashboard",
+        title: "Vue d'ensemble",
+        greet: "",
+      });
+
+      async function charger() {
+        const [agriculteurs, parcelles, capteurs, alertes, prescriptions] =
+          await Promise.all([
+            api("/agriculteurs", { silent: true }).catch(() => []),
+            api("/parcelles", { silent: true }).catch(() => []),
+            api("/capteurs", { silent: true }).catch(() => []),
+            api("/alertes", { silent: true }).catch(() => []),
+            api("/prescriptions?limit=500", { silent: true }).catch(() => []),
+          ]);
+
+        document.getElementById("kUsers").textContent = agriculteurs.length;
+        document.getElementById("kParcelles").textContent = parcelles.length;
+        document.getElementById("kCapteurs").textContent = capteurs.length;
+        document.getElementById("kAlertes").textContent = alertes.filter(
+          (a) => a.etat !== "cloture",
+        ).length;
+
+        /* État du parc */
+        const etats = { actif: 0, panne: 0, hors_ligne: 0, maintenance: 0 };
+        capteurs.forEach((c) => {
+          if (etats[c.etat] !== undefined) etats[c.etat]++;
+        });
+        document.querySelectorAll("#chartCapteurs,#chartEau").forEach((c) => {
+          const ex = Chart.getChart(c);
+          if (ex) ex.destroy();
+        });
+        makeBarChart(
+          "chartCapteurs",
+          ["Actifs", "En panne", "Hors ligne", "Maintenance"],
+          [etats.actif, etats.panne, etats.hors_ligne, etats.maintenance],
+        );
+        {
+          const chart = Chart.getChart("chartCapteurs");
+          chart.data.datasets[0].backgroundColor = [
+            cssv("--green"),
+            cssv("--red"),
+            cssv("--muted"),
+            cssv("--amber"),
+          ];
+          chart.update();
+        }
+
+        /* Eau appliquée par jour (prescriptions faites, toutes parcelles) */
+        const eauParJour = {};
+        prescriptions
+          .filter((p) => p.etat === "faite")
+          .forEach((p) => {
+            const d = p.date_faite || p.date;
+            eauParJour[d] = (eauParJour[d] || 0) + (p.volume_eau || 0);
+          });
+        const jours = Object.keys(eauParJour).sort();
+        makeBarChart(
+          "chartEau",
+          jours.map(fmtDate),
+          jours.map((d) => +eauParJour[d].toFixed(1)),
+          cssv("--blue"),
+          { unit: " L/m²" },
+        );
+
+        /* Table des dernières alertes */
+        const capNom = (id) =>
+          (capteurs.find((c) => c.id === id) || {}).nom ||
+          (id ? "#" + id : "—");
+        const agriNom = (id) =>
+          (agriculteurs.find((a) => a.id === id) || {}).nom || "—";
+        const t = document.getElementById("alertTable");
+        t.innerHTML =
+          "<tr><th>Date</th><th>Capteur</th><th>Signalée par</th><th>Description</th><th>État</th></tr>" +
+          (alertes.length
+            ? alertes
+                .slice(0, 8)
+                .map((a) => {
+                  const cls =
+                    {
+                      en_attente: "a",
+                      en_intervention: "b",
+                      repare: "g",
+                      cloture: "gray",
+                    }[a.etat] || "gray";
+                  return (
+                    "<tr><td>" +
+                    fmtDate(a.date) +
+                    "</td><td>" +
+                    capNom(a.id_capteur) +
+                    "</td><td>" +
+                    agriNom(a.id_agriculteur) +
+                    '</td><td style="color:var(--muted)">' +
+                    (a.texte || "—") +
+                    '</td><td><span class="chip ' +
+                    cls +
+                    '">' +
+                    (ALERTE_LABELS[a.etat] || a.etat) +
+                    "</span></td></tr>"
+                  );
+                })
+                .join("")
+            : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Aucune alerte</td></tr>');
+      }
+      charger();
+
+      /* Temps réel : la vue d'ensemble se rafraîchit quand le système bouge */
+      TerraRealtime.connecter();
+      [
+        "terra:alerte_update",
+        "terra:capteur_update",
+        "terra:parcelle_update",
+        "terra:parcelle_delete",
+        "terra:prescription_update",
+        "terra:prescriptions_bulk",
+      ].forEach((ev) =>
+        window.addEventListener(ev, () => {
+          charger();
+          Layout.refreshAlertBadge();
+        }),
+      );
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1122 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tableau de bord</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view" id="view-dash">
+            <div class="grid">
+              <!-- ÉTAT DE LA PARCELLE : la plante vivante + indice de vitalité -->
+              <div class="card span5 card-center">
+                <h3><i data-ti="tomate"></i>État de la parcelle</h3>
+                <div class="hero">
+                  <div class="plant-wrap">
+                    <svg
+                      viewBox="0 0 150 180"
+                      width="150"
+                      aria-label="Plante de tomate niveau d'eau du sol"
+                    >
+                      <defs>
+                        <clipPath id="soilclip">
+                          <rect x="20" y="120" width="110" height="52" rx="8" />
+                        </clipPath>
+                      </defs>
+                      <circle
+                        cx="75"
+                        cy="78"
+                        r="58"
+                        fill="none"
+                        stroke="var(--line)"
+                        stroke-width="5"
+                      />
+                      <circle
+                        id="ring"
+                        cx="75"
+                        cy="78"
+                        r="58"
+                        fill="none"
+                        stroke="#159a64"
+                        stroke-width="5"
+                        stroke-linecap="round"
+                        stroke-dasharray="364.4"
+                        stroke-dashoffset="364.4"
+                        transform="rotate(-90 75 78)"
+                      />
+                      <g class="sway">
+                        <path
+                          d="M75 120 V58"
+                          stroke="#159a64"
+                          stroke-width="5"
+                          stroke-linecap="round"
+                        />
+                        <path
+                          d="M75 86 q-22-8-30-26 q22-2 30 16Z"
+                          fill="#1aa86d"
+                        />
+                        <path
+                          d="M75 74 q22-8 30-26 q-22-2-30 16Z"
+                          fill="#1aa86d"
+                        />
+                        <path
+                          d="M75 104 q-20-6-28-22 q20-2 28 14Z"
+                          fill="#23b878"
+                        />
+                        <path
+                          d="M75 100 q20-6 28-22 q-20-2-28 14Z"
+                          fill="#23b878"
+                          opacity=".85"
+                        />
+                        <circle cx="62" cy="96" r="9" fill="#e0573b" />
+                        <circle cx="90" cy="100" r="9" fill="#e0573b" />
+                        <circle cx="76" cy="80" r="8" fill="#ef7a52" />
+                        <path
+                          d="M60 89 q2-4 6-4M88 93 q2-4 6-4"
+                          stroke="#0c6f49"
+                          stroke-width="1.6"
+                          stroke-linecap="round"
+                          fill="none"
+                        />
+                      </g>
+                      <rect
+                        x="20"
+                        y="120"
+                        width="110"
+                        height="52"
+                        rx="8"
+                        fill="var(--soil)"
+                      />
+                      <rect
+                        id="water"
+                        x="20"
+                        y="160"
+                        width="110"
+                        height="12"
+                        fill="#5cb8e8"
+                        clip-path="url(#soilclip)"
+                        opacity=".75"
+                      />
+                      <rect
+                        x="20"
+                        y="120"
+                        width="110"
+                        height="52"
+                        rx="8"
+                        fill="none"
+                        stroke="var(--soil-d)"
+                        stroke-width="2"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="hero-pct">
+                      <span id="moistVal">--</span><small>%</small>
+                    </div>
+                    <div class="statusword" id="statusWord">—</div>
+                    <div class="hero-sub" id="heroSub">
+                      Humidité du sol mesurée par les capteurs.
+                    </div>
+                    <div class="tag ok" id="heroTag"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- LA RECOMMANDATION : quelle décision prendre maintenant ? -->
+              <div class="card span7">
+                <h3><i data-ti="ia"></i>Recommandation</h3>
+                <div id="alerteExpertBox" class="alerte-box" style="display: none"></div>
+                <div class="reco-msg" id="recoMsg">Chargement…</div>
+                <div class="reco-why" id="recoWhy"></div>
+                <div id="recoActions" style="margin-top: 12px"></div>
+                <div class="weather" id="weatherBox">
+                  <svg id="wIcon" viewBox="0 0 24 24" fill="none"></svg>
+                  <div>
+                    <b id="wTitle">Météo</b><br /><span id="wSub"
+                      >Chargement des prévisions…</span
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <!-- KPI : les signes vitaux mesurés par les capteurs -->
+              <div class="card span3 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--amber-soft); color: var(--amber-ink)"
+                >
+                  <i data-ti="soleil"></i>
+                </div>
+                <div class="kpi-val">
+                  <span id="tempVal">--</span><small>°C</small>
+                </div>
+                <div class="kpi-lab">Température de l'air</div>
+              </div>
+              <div class="card span3 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--blue-soft); color: var(--blue)"
+                >
+                  <i data-ti="air"></i>
+                </div>
+                <div class="kpi-val">
+                  <span id="airVal">--</span><small>%</small>
+                </div>
+                <div class="kpi-lab">Humidité de l'air</div>
+              </div>
+
+              <div
+                class="card span3 kpi"
+                title="Évapotranspiration ETc = ET₀ (Hargreaves, FAO-56) × Kc du stade — calculée par le moteur expert toutes les 5 min"
+              >
+                <div
+                  class="ic"
+                  style="background: var(--violet-soft); color: var(--violet)"
+                >
+                  <i data-ti="soleil"></i>
+                </div>
+                <div class="kpi-val">
+                  <span id="evapVal">--</span><small>mm/j</small>
+                </div>
+                <div class="kpi-lab">Évaporation</div>
+              </div>
+              <div class="card span3 kpi">
+                <div
+                  class="ic"
+                  style="background: var(--green-soft); color: var(--green-d)"
+                >
+                  <i data-ti="cuve"></i>
+                </div>
+                <div class="kpi-val">
+                  <span id="eauVal">0</span><small>L/m²</small>
+                </div>
+                <div class="kpi-lab">Volume d'eau utilisé</div>
+              </div>
+
+              <div class="card span8">
+                <h3>
+                  <i data-ti="courbe"></i>Humidité du sol — capteur capacitif
+                </h3>
+                <div style="height: 260px"><canvas id="chart"></canvas></div>
+                <div
+                  class="reco-why"
+                  id="chartEmpty"
+                  style="text-align: center; margin-top: 8px"
+                ></div>
+              </div>
+              <div class="card span4">
+                <h3><i data-ti="feuille"></i>Profil de culture</h3>
+                <div
+                  style="
+                    display: flex;
+                    align-items: baseline;
+                    justify-content: space-between;
+                    gap: 8px;
+                  "
+                >
+                  <div
+                    style="
+                      font-weight: 700;
+                      font-family: &quot;Sora&quot;;
+                      font-size: 17px;
+                    "
+                    id="stageName"
+                  >
+                    —
+                  </div>
+                  <small
+                    style="
+                      color: var(--muted);
+                      font-weight: 700;
+                      white-space: nowrap;
+                    "
+                    id="stagePos"
+                  ></small>
+                </div>
+                <div class="stages compact" id="stages"></div>
+                <div class="thresh">
+                  <span>Seuil bas : <b id="thLow">--%</b></span
+                  ><span>Cible : <b id="thHigh">--%</b></span>
+                </div>
+                <div
+                  class="reco-why"
+                  style="margin-top: 12px"
+                  id="stageWhy"
+                ></div>
+                <a
+                  class="btn-sm"
+                  style="margin-top: 14px; width: 100%; justify-content: center"
+                  href="cycle-culture.html"
+                  >Voir le cycle complet →</a
+                >
+              </div>
+
+              <div class="card span7">
+                <h3>
+                  <i data-ti="nuage"></i>Prévisions météo
+                  <button class="dlbtn" onclick="syncMeteo()">
+                    <i data-ti="historique"></i> Actualiser
+                  </button>
+                </h3>
+                <div class="grid" id="forecastGrid" style="gap: 10px"></div>
+              </div>
+              <div class="card span5">
+                <h3><i data-ti="historique"></i>Journal</h3>
+                <div class="feed" id="feed"></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/charts.js"></script>
+    <script src="../assets/js/realtime.js"></script>
+    <script>
+      let user,
+        curParcelle = null,
+        capteurs = [],
+        mesures = [],
+        prescriptions = [],
+        previsions = [],
+        chart = null;
+      const RING_C = 364.4;
+
+      function tweenNumber(el, to, decimals) {
+        if (!el) return; // la carte KPI a pu être retirée du HTML
+        decimals = decimals || 0;
+        if (to === null || to === undefined || isNaN(to)) {
+          el.textContent = "--";
+          el.dataset.v = "";
+          return;
+        }
+        const from = parseFloat(el.dataset.v);
+        if (isNaN(from) || Math.abs(from - to) < 0.05) {
+          el.textContent = (+to).toFixed(decimals);
+          el.dataset.v = to;
+          return;
+        }
+        const t0 = performance.now(),
+          dur = 550;
+        function step(now) {
+          const k = Math.min(1, (now - t0) / dur);
+          const val = from + (to - from) * (1 - Math.pow(1 - k, 3));
+          el.textContent = val.toFixed(decimals);
+          if (k < 1) requestAnimationFrame(step);
+          else el.dataset.v = to;
+        }
+        requestAnimationFrame(step);
+      }
+
+      Layout.mount({
+        role: "agriculteur",
+        active: "dashboard",
+        title: "",
+        parcelleSelector: true,
+        onParcelleChange(pid) {
+          selectParcelle(pid);
+        },
+      });
+
+      /* ---------- Chargement des données réelles ---------- */
+      async function selectParcelle(pid) {
+        if (pid === null) {
+          videTableau();
+          return;
+        }
+        curParcelle =
+          Layout.parcelles.find((p) => String(p.id) === String(pid)) ||
+          (await api("/parcelles/" + pid));
+        document.getElementById("feed").innerHTML = "";
+        log(
+          "drop",
+          "Surveillance de " + curParcelle.nom + " — données du backend TERRA",
+          "maintenant",
+        );
+        await Promise.all([chargerDonnees(), chargerMeteo()]);
+        buildStageCard();
+        renderAll();
+      }
+
+      async function chargerDonnees() {
+        [capteurs, mesures, prescriptions] = await Promise.all([
+          api("/capteurs?id_parcelle=" + curParcelle.id, {
+            silent: true,
+          }).catch(() => []),
+          api("/mesures?id_parcelle=" + curParcelle.id + "&limit=300", {
+            silent: true,
+          }).catch(() => []),
+          api("/prescriptions?id_parcelle=" + curParcelle.id + "&limit=100", {
+            silent: true,
+          }).catch(() => []),
+        ]);
+      }
+      async function chargerMeteo() {
+        previsions = await api("/meteo/previsions", { silent: true }).catch(
+          () => [],
+        );
+      }
+
+      /* Aucune parcelle attribuée : on affiche quand même la météo
+         (elle ne dépend pas d'une parcelle) — et le WebSocket la
+         tiendra à jour comme sur un dashboard normal. */
+      async function videTableau() {
+        document.getElementById("recoMsg").textContent = "Aucune parcelle";
+        document.getElementById("recoWhy").textContent =
+          "Aucune parcelle ne vous est attribuée pour le moment — contactez votre administrateur.";
+        await chargerMeteo();
+        buildForecast();
+      }
+
+      /* ---------- Aides mesures (format multi-grandeurs) ----------
+         Le JSONB porte des clés par grandeur ({"humidite":27.6} pour
+         le capacitif sol, {"temperature":27.6,"humidite":30} pour le
+         DHT22) — la lecture passe par valeursMesure() (culture.js). */
+      function capteurType(id) {
+        const c = capteurs.find((x) => x.id === id);
+        return c ? c.type : null;
+      }
+      /* SOURCE UNIQUE DE VÉRITÉ : le dashboard n'affiche comme donnée
+         « actuelle » QUE ce que le moteur expert accepterait lui-même.
+         Filtre miroir de moteur_expert._mesures_capteurs : le capteur
+         doit être ACTIF (un capteur hors_ligne / panne / maintenance est
+         ignoré, même s'il a laissé une dernière mesure < 24h). Sans ce
+         filtre, la carte « État de la parcelle » pouvait afficher une
+         valeur (ex. 28 %) qu'un capteur débranché avait laissée, pendant
+         que la carte « Recommandation » annonçait « aucune donnée depuis
+         24h » : les deux cartes se contredisaient. */
+      function capteurActif(id) {
+        const c = capteurs.find((x) => x.id === id);
+        return !!c && c.etat === "actif";
+      }
+      /* Dernière valeur FRAÎCHE (< 24h) et ACTIVE d'une GRANDEUR
+         (temperature, humidite_air…). Les mesures sont triées desc par
+         l'API : dès qu'on en croise une trop vieille, toutes les
+         suivantes le sont aussi (break) ; un capteur inactif est sauté
+         (continue) sans arrêter le parcours. */
+      function derniereGrandeur(grandeur) {
+        for (const m of mesures) {
+          if (!mesureEstFraiche(m.date)) break;
+          if (!capteurActif(m.id_capteur)) continue;
+          const v = valeursMesure(capteurType(m.id_capteur), m.donnees);
+          if (v[grandeur] !== undefined) return v[grandeur];
+        }
+        return null;
+      }
+      /* Humidité du sol AFFICHÉE = EXACTEMENT la valeur sur laquelle le
+         moteur expert décide : capteurs actifs, mesures < 24h, moyenne
+         des 3 dernières pour lisser le bruit du capacitif (même calcul
+         que moteur_expert._mesures_capteurs). null → le moteur n'aurait
+         aucune donnée fiable, la carte affiche « En attente » en accord
+         avec la recommandation. */
+      function humiditeSolActuelle() {
+        const vals = [];
+        for (const m of mesures) {
+          if (!mesureEstFraiche(m.date)) break;
+          if (!capteurActif(m.id_capteur)) continue;
+          const v = valeursMesure(capteurType(m.id_capteur), m.donnees);
+          if (v.humidite_sol !== undefined) {
+            vals.push(v.humidite_sol);
+            if (vals.length === 3) break;
+          }
+        }
+        if (!vals.length) return null;
+        return (
+          Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
+        );
+      }
+      /* Série chronologique {date, valeur} de l'humidité du sol */
+      function serieHumidite() {
+        const serie = [];
+        for (const m of mesures) {
+          const v = valeursMesure(capteurType(m.id_capteur), m.donnees);
+          if (v.humidite_sol !== undefined)
+            serie.push({ date: m.date, valeur: v.humidite_sol });
+        }
+        return serie.slice(0, 60).reverse(); // chronologique
+      }
+
+      /* ---------- Rendu ---------- */
+      function renderAll() {
+        const info = computeStade(curParcelle);
+        // La carte « État de la parcelle » affiche l'humidité du sol
+        // RÉELLE, calculée exactement comme le moteur expert (capteurs
+        // actifs, < 24h, moyenne des 3 dernières) — jamais une valeur
+        // qu'il refuserait.
+        const hum = humiditeSolActuelle();
+
+        tweenNumber(document.getElementById("moistVal"), hum, 0);
+        // Température + humidité de l'air : mesures réelles du DHT22
+        tweenNumber(
+          document.getElementById("tempVal"),
+          derniereGrandeur("temperature"),
+          1,
+        );
+        tweenNumber(
+          document.getElementById("airVal"),
+          derniereGrandeur("humidite_air"),
+          0,
+        );
+        // Évaporation ETc calculée et persistée par le moteur expert
+        tweenNumber(
+          document.getElementById("evapVal"),
+          curParcelle.evaporation_mm ?? null,
+          1,
+        );
+        // Consommation d'eau TOTALE et réelle de la parcelle
+        // (cumulée à chaque mission validée)
+        tweenNumber(
+          document.getElementById("eauVal"),
+          curParcelle.eau_utilisee ?? 0,
+          1,
+        );
+
+        // Niveau d'eau du sol : rempli proportionnellement au plafond
+        // du stade (échelle volumétrique réelle, pas 0-100 arbitraire)
+        const h = hum === null ? 0 : hum;
+        const plafond = info.stade.humiditeMax || 40;
+        const pctEau = Math.min(100, (h / plafond) * 100);
+        const top = 120 + 52 - (52 * pctEau) / 100;
+        const w = document.getElementById("water");
+        w.setAttribute("y", top);
+        w.setAttribute("height", 172 - top);
+
+        let c, word, tag, tagcls, sub;
+        if (hum === null) {
+          c = "#8da79a";
+          word = "En attente";
+          tag = "";
+          tagcls = "warn";
+          sub = "En attente de la prochaine mesure du capteur capacitif.";
+        } else if (hum < info.stade.seuilBas) {
+          c = "#e0573b";
+          word = "A soif";
+          tag = "⚠ Sol trop sec";
+          tagcls = "bad";
+          sub = "Le sol est en dessous du seuil : la plante manque d'eau.";
+        } else if (info.stade.humiditeMax && hum >= info.stade.humiditeMax) {
+          c = "#e8a23a";
+          word = "Trop arrosé";
+          tag = "⚠ Excès d'eau";
+          tagcls = "warn";
+          sub = "Risque d'excès d'eau : surveillez le drainage.";
+        } else {
+          c = "#159a64";
+          word = "En forme";
+          tag = "✓ Humidité idéale";
+          tagcls = "ok";
+          sub = "Elle se situe dans la plage idéale pour la tomate.";
+        }
+        const sw = document.getElementById("statusWord");
+        sw.textContent = word;
+        sw.style.color = c;
+        const ht = document.getElementById("heroTag");
+        ht.className = "tag " + tagcls;
+        ht.textContent = tag;
+        document.getElementById("heroSub").textContent = sub;
+
+        // Anneau autour de la plante : se remplit selon l'humidité du
+        // sol mesurée (même échelle que le niveau d'eau du pot).
+        const ring = document.getElementById("ring");
+        ring.setAttribute("stroke", c === "#8da79a" ? "#159a64" : c);
+        ring.setAttribute(
+          "stroke-dashoffset",
+          (RING_C * (1 - pctEau / 100)).toFixed(1),
+        );
+
+        renderReco();
+        buildChart();
+        buildForecast();
+      }
+
+      /* La prescription la plus récente « à faire » = la décision du moment */
+      function renderReco() {
+        const aFaire = prescriptions.filter((p) => p.etat === "a_faire");
+        const msg = document.getElementById("recoMsg"),
+          why = document.getElementById("recoWhy"),
+          act = document.getElementById("recoActions");
+        if (aFaire.length) {
+          const p = aFaire[0];
+          const f = formatPrescription(p);
+          msg.textContent = f.actionLabel + " : " + f.action;
+          why.textContent = f.pourquoiLabel + " " + f.pourquoi;
+          act.innerHTML =
+            '<a class="btn-sm primary" href="recommandations.html">' +
+            ticon("check") +
+            " Voir mes " +
+            aFaire.length +
+            " mission(s)</a>";
+        } else {
+          msg.textContent = "✓ Aucune action nécessaire";
+          why.textContent =
+            "Aucune prescription en attente : le moteur expert a jugé les conditions satisfaisantes lors de sa dernière analyse (il repasse toutes les 5 min).";
+          act.innerHTML = "";
+        }
+      }
+
+      function log(type, txt, who) {
+        const f = document.getElementById("feed");
+        if (!f) return;
+        const e = document.createElement("div");
+        e.className = "ev";
+        const cls =
+          type === "rain"
+            ? "rainline"
+            : type === "warn"
+              ? "warnline"
+              : "dropline";
+        const name =
+          type === "rain" ? "pluie" : type === "warn" ? "alerte" : "goutte";
+        const time =
+          who === "maintenant"
+            ? "à l'instant"
+            : new Date().toLocaleTimeString("fr-FR");
+        e.innerHTML =
+          '<div class="ed ' +
+          cls +
+          '">' +
+          ticon(name) +
+          '</div><div><div class="etxt">' +
+          txt +
+          '</div><div class="etime">' +
+          time +
+          "</div></div>";
+        f.prepend(e);
+        while (f.children.length > 30) f.removeChild(f.lastChild);
+      }
+
+      function buildChart() {
+        const info = computeStade(curParcelle);
+        const serie = serieHumidite();
+        const labels = serie.map((m) =>
+          new Date(m.date).toLocaleString("fr-FR", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        );
+        const data = serie.map((m) => m.valeur);
+        document.getElementById("chartEmpty").textContent = serie.length
+          ? ""
+          : "Aucune mesure d'humidité du sol reçue — vérifiez le capteur capacitif.";
+        
+        if (chart) chart.destroy();
+        
+        const canvas = document.getElementById("chart");
+        const ctx = canvas.getContext('2d');
+        
+        // Dégradé premium pour l'aire sous la courbe (esthétique moderne type Linear/Vercel)
+        const gradArea = ctx.createLinearGradient(0, 0, 0, 300);
+        gradArea.addColorStop(0, "rgba(21, 154, 100, 0.2)");
+        gradArea.addColorStop(1, "rgba(21, 154, 100, 0.0)");
+
+        // Dégradé fluide pour la ligne principale
+        const gradLine = ctx.createLinearGradient(0, 0, canvas.clientWidth || 800, 0);
+        gradLine.addColorStop(0, "#23b878");
+        gradLine.addColorStop(1, "#159a64");
+
+        // Infobulle HTML personnalisée (aspect carte flottante haut de gamme)
+        const infobullePremium = (context) => {
+          const {chart, tooltip} = context;
+          let el = chart.canvas.parentNode.querySelector('div.infobulle-premium');
+          
+          if (!el) {
+            el = document.createElement('div');
+            el.classList.add('infobulle-premium');
+            el.style.background = 'rgba(255, 255, 255, 0.98)';
+            el.style.backdropFilter = 'blur(16px)';
+            el.style.borderRadius = '12px';
+            el.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0,0,0,0.03)';
+            el.style.border = '1px solid rgba(0, 0, 0, 0.06)';
+            el.style.pointerEvents = 'none';
+            el.style.position = 'absolute';
+            el.style.transform = 'translate(-50%, 12px)';
+            el.style.transition = 'opacity 0.2s ease, left 0.15s ease, top 0.15s ease, transform 0.2s ease';
+            el.style.padding = '14px 18px';
+            el.style.zIndex = '100';
+            
+            chart.canvas.parentNode.appendChild(el);
+            chart.canvas.parentNode.style.position = 'relative';
+          }
+
+          if (tooltip.opacity === 0) {
+            el.style.opacity = 0;
+            el.style.transform = 'translate(-50%, 12px)';
+            return;
+          }
+
+          if (tooltip.body) {
+            const titres = tooltip.title || [];
+            const corps = tooltip.body.map(b => b.lines);
+            
+            let html = `<div style="font-family: 'Plus Jakarta Sans', sans-serif;">`;
+            
+            titres.forEach(titre => {
+              html += `<div style="font-weight: 700; color: #94a3b8; margin-bottom: 12px; font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">${titre}</div>`;
+            });
+            
+            corps.forEach((ligne, i) => {
+              const couleurs = tooltip.labelColors[i];
+              // Hiérarchie : la valeur d'humidité ressort plus que les seuils
+              const estPrincipal = ligne.includes("Humidité");
+              const tTexte = estPrincipal ? "14px" : "13px";
+              const pTexte = estPrincipal ? "700" : "600";
+              const cTexte = estPrincipal ? "#0f172a" : "#475569";
+                
+              const ptStyle = `width: 8px; height: 8px; border-radius: 50%; background: ${couleurs.backgroundColor}; box-shadow: 0 0 0 2px #fff, 0 0 0 4px ${couleurs.backgroundColor}40; margin-right: 12px; flex-shrink: 0;`;
+              
+              html += `<div style="display: flex; align-items: center; margin-bottom: 8px; font-size: ${tTexte}; font-weight: ${pTexte}; color: ${cTexte};">
+                <span style="${ptStyle}"></span>
+                <span>${ligne}</span>
+              </div>`;
+            });
+            html += '</div>';
+            el.innerHTML = html;
+          }
+
+          const {offsetLeft, offsetTop} = chart.canvas;
+          el.style.opacity = 1;
+          el.style.left = offsetLeft + tooltip.caretX + 'px';
+          el.style.top = offsetTop + tooltip.caretY - el.offsetHeight - 16 + 'px';
+          el.style.transform = 'translate(-50%, 0)';
+        };
+
+        // Ligne de repère verticale (réticule croisé) au survol
+        const reticulePlugin = {
+          id: 'reticulePremium',
+          afterDraw: chart => {
+            if (chart.tooltip?._active?.length) {
+              const x = chart.tooltip._active[0].element.x;
+              const yAxis = chart.scales.y;
+              const ctx = chart.ctx;
+              ctx.save();
+              ctx.beginPath();
+              ctx.moveTo(x, yAxis.top);
+              ctx.lineTo(x, yAxis.bottom);
+              ctx.lineWidth = 1;
+              ctx.strokeStyle = 'rgba(15, 23, 42, 0.08)';
+              ctx.setLineDash([4, 4]);
+              ctx.stroke();
+              ctx.restore();
+            }
+          }
+        };
+
+        chart = new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Humidité du sol",
+                data,
+                borderColor: gradLine,
+                backgroundColor: gradArea,
+                fill: true,
+                tension: 0.45,
+                borderWidth: 3,
+                pointRadius: (ctx) => ctx.dataIndex === data.length - 1 ? 5 : 0,
+                pointHoverRadius: 6,
+                pointBackgroundColor: "#ffffff",
+                pointBorderColor: "#159a64",
+                pointBorderWidth: 2,
+                pointHoverBackgroundColor: "#ffffff",
+                pointHoverBorderColor: "#159a64",
+                pointHoverBorderWidth: 3,
+                order: 0,
+              },
+              {
+                label: "Seuil bas",
+                data: data.map(() => info.stade.seuilBas),
+                borderColor: "rgba(224, 87, 59, 0.5)",
+                borderDash: [5, 5],
+                pointRadius: 0,
+                pointHitRadius: 0,
+                borderWidth: 1.5,
+                fill: false,
+                order: 1,
+              },
+              {
+                label: "Cible",
+                data: data.map(() => info.stade.seuilCible),
+                borderColor: "rgba(59, 130, 246, 0.4)",
+                borderDash: [5, 5],
+                pointRadius: 0,
+                pointHitRadius: 0,
+                borderWidth: 1.5,
+                fill: false,
+                order: 2,
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+              duration: 1000,
+              easing: 'easeOutQuart',
+            },
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
+            layout: {
+              padding: { top: 10, bottom: 10, left: -5, right: 15 }
+            },
+            plugins: {
+              legend: {
+                position: 'top',
+                align: 'end',
+                labels: {
+                  usePointStyle: true,
+                  boxWidth: 6,
+                  boxHeight: 6,
+                  padding: 24,
+                  color: '#64748b',
+                  font: { family: 'Plus Jakarta Sans', size: 12, weight: '600' }
+                }
+              },
+              tooltip: {
+                enabled: false,
+                external: infobullePremium,
+                callbacks: {
+                  label: (ctx) => {
+                     return `${ctx.dataset.label} : ${ctx.formattedValue}%`;
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                min: 0,
+                max: Math.max(40, (info.stade.humiditeMax || 33) + 7),
+                grid: {
+                  color: 'rgba(0, 0, 0, 0.04)',
+                  drawBorder: false,
+                  tickLength: 0
+                },
+                border: { display: false },
+                ticks: {
+                  color: '#94a3b8',
+                  font: { family: 'Plus Jakarta Sans', size: 11, weight: '500' },
+                  padding: 12,
+                  stepSize: 10,
+                  callback: (v) => v + '%'
+                }
+              },
+              x: {
+                grid: {
+                  display: false,
+                  drawBorder: false
+                },
+                border: { display: false },
+                ticks: {
+                  color: '#94a3b8',
+                  font: { family: 'Plus Jakarta Sans', size: 11, weight: '500' },
+                  maxTicksLimit: 7,
+                  padding: 10,
+                  maxRotation: 0,
+                  minRotation: 0
+                }
+              }
+            }
+          },
+          plugins: [reticulePlugin]
+        });
+        
+        if (typeof _registeredCharts !== 'undefined') {
+          _registeredCharts.push(chart);
+        }
+      }
+
+      function buildStageCard() {
+        const cycle = dbGetCycle();
+        const info = computeStade(curParcelle);
+        document.getElementById("stageName").textContent = info.stade.label;
+        document.getElementById("stagePos").textContent =
+          "Stade " + (info.idx + 1) + "/" + cycle.length;
+        document.getElementById("thLow").textContent =
+          info.stade.seuilBas + "%";
+        document.getElementById("thHigh").textContent =
+          info.stade.seuilCible + "%";
+        document.getElementById("stageWhy").textContent =
+          info.stade.desc +
+          " Jour " +
+          (info.jourDansStade + 1) +
+          "/" +
+          info.stade.dureeJours +
+          " de ce stade.";
+        const c = document.getElementById("stages");
+        c.innerHTML = "";
+        cycle.forEach((s, i) => {
+          const d = document.createElement("div");
+          d.className =
+            "stage " + (i < info.idx ? "done" : i === info.idx ? "cur" : "");
+          d.title = s.label + (i === info.idx ? " (stade actuel)" : "");
+          d.innerHTML = '<div class="bar"></div><small>' + s.label + "</small>";
+          c.appendChild(d);
+        });
+      }
+
+      /* ---------- Météo réelle (stockée par le backend) ----------
+         « Aujourd'hui » est calculé par rapport à la DATE RÉELLE
+         (heure locale du navigateur), jamais par position dans la
+         liste : les prévisions passées sont écartées et les libellés
+         se décalent automatiquement chaque jour. */
+      function _dateLocale(x) {
+        // AAAA-MM-JJ en heure LOCALE (toISOString serait en UTC)
+        const d = x instanceof Date ? x : new Date(x);
+        return (
+          d.getFullYear() +
+          "-" +
+          String(d.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(d.getDate()).padStart(2, "0")
+        );
+      }
+      function grouperParJour(prevs) {
+        const aujourdhui = _dateLocale(new Date());
+        const demain = _dateLocale(new Date(Date.now() + 86400000));
+        const jours = {};
+        prevs.forEach((p) => {
+          const d = _dateLocale(p.prevu_pour);
+          if (d < aujourdhui) return; // prévision passée : on ignore
+          jours[d] = jours[d] || { temps: [], pluie: 0, descs: [] };
+          jours[d].temps.push(p.temperature);
+          jours[d].pluie += p.pluie_3h || 0;
+          if (p.description) jours[d].descs.push(p.description.toLowerCase());
+        });
+        return Object.keys(jours)
+          .sort()
+          .slice(0, 5)
+          .map((d) => {
+            const j = jours[d];
+            return {
+              label:
+                d === aujourdhui
+                  ? "Aujourd'hui"
+                  : d === demain
+                    ? "Demain"
+                    : new Date(d + "T12:00:00").toLocaleDateString("fr-FR", {
+                        weekday: "short",
+                        day: "numeric",
+                      }),
+              tmax: Math.round(Math.max(...j.temps)),
+              tmin: Math.round(Math.min(...j.temps)),
+              pluie: +j.pluie.toFixed(1),
+              nuageux: j.descs.some((x) =>
+                /nuag|cloud|couvert|overcast/.test(x),
+              ),
+            };
+          });
+      }
+      function buildForecast() {
+        const g = document.getElementById("forecastGrid");
+        if (!previsions.length) {
+          g.innerHTML =
+            '<div class="span12 empty">Aucune prévision en base — cliquez « Actualiser » pour synchroniser OpenWeather.</div>';
+          return;
+        }
+        const jours = grouperParJour(previsions);
+        const wxi = (j) => {
+          const name = j.pluie > 0.4 ? "pluie" : j.nuageux ? "nuage" : "soleil";
+          const col =
+            j.pluie > 0.4
+              ? "var(--blue)"
+              : j.nuageux
+                ? "var(--muted)"
+                : "var(--amber)";
+          return (
+            '<svg viewBox="0 0 24 24" fill="none" width="26" height="26" style="color:' +
+            col +
+            '">' +
+            ICONS[name] +
+            "</svg>"
+          );
+        };
+        g.innerHTML = jours
+          .map(
+            (j) =>
+              '<div class="span2 wx-tile">' +
+              '<div class="wx-day">' +
+              j.label +
+              "</div>" +
+              wxi(j) +
+              '<div class="wx-temp">' +
+              j.tmax +
+              "°<span> / " +
+              j.tmin +
+              "°</span></div>" +
+              '<div class="wx-rain">' +
+              ticon("goutte") +
+              " " +
+              j.pluie +
+              " mm</div>" +
+              "</div>",
+          )
+          .join("");
+        const rainSoon = jours.length && jours[0].pluie > 0.4;
+        const wI = document.getElementById("wIcon"),
+          wT = document.getElementById("wTitle"),
+          wS = document.getElementById("wSub");
+        if (rainSoon) {
+          wI.innerHTML = ICONS.pluie;
+          wI.style.color = "var(--blue)";
+          wT.textContent =
+            "Pluie attendue aujourd'hui (" + jours[0].pluie + " mm)";
+          wS.textContent =
+            "Le moteur expert en tiendra compte avant de recommander une irrigation.";
+        } else {
+          wI.innerHTML = ICONS.soleil;
+          wI.style.color = "var(--amber)";
+          wT.textContent = "Pas de pluie significative aujourd'hui";
+          wS.textContent =
+            "Données OpenWeather stockées puis exposées par le backend TERRA.";
+        }
+      }
+
+      /* ---------- Actualisation météo à la demande ---------- */
+      async function syncMeteo() {
+        try {
+          await api(
+            "/meteo/sync" +
+              (curParcelle && curParcelle.lat
+                ? "?lat=" + curParcelle.lat + "&lon=" + curParcelle.lon
+                : ""),
+            { method: "POST" },
+          );
+          toast("Météo synchronisée depuis OpenWeather ✅", "ok");
+        } catch (e) {}
+      }
+
+      /* ---------- Temps réel : le WebSocket du backend pilote l'affichage ---------- */
+      TerraRealtime.connecter();
+      /* À chaque (re)connexion du WebSocket, on recharge tout : si la
+         connexion a été coupée (backend redémarré, réseau…), les
+         événements manqués sont ainsi rattrapés sans recharger la page. */
+      let _wsDejaOuvert = false;
+      window.addEventListener("terra:ws_ouvert", async () => {
+        const p = document.getElementById("wsPill");
+        if (p) {
+          p.style.opacity = 1;
+        }
+        if (_wsDejaOuvert && curParcelle) {
+          await Promise.all([chargerDonnees(), chargerMeteo()]);
+          renderAll();
+          log(
+            "drop",
+            "Connexion temps réel rétablie — données resynchronisées",
+          );
+        }
+        _wsDejaOuvert = true;
+      });
+      window.addEventListener("terra:mesures_bulk", async (e) => {
+        if (!curParcelle) return;
+        await chargerDonnees();
+        renderAll();
+        log("drop", e.detail.mesures_inserees + " mesures reçues des capteurs");
+      });
+      window.addEventListener("terra:mesure_update", async (e) => {
+        if (!curParcelle || !capteurs.some((c) => c.id === e.detail.id_capteur))
+          return;
+        mesures.unshift(e.detail);
+        renderAll();
+        log("drop", "Nouvelle mesure du capteur #" + e.detail.id_capteur);
+      });
+      window.addEventListener("terra:prescriptions_bulk", async () => {
+        if (!curParcelle) return;
+        prescriptions = await api(
+          "/prescriptions?id_parcelle=" + curParcelle.id + "&limit=100",
+          { silent: true },
+        ).catch(() => prescriptions);
+        renderAll();
+        log("drop", "Nouvelles prescriptions disponibles");
+      });
+      window.addEventListener("terra:prescription_update", async () => {
+        if (!curParcelle) return;
+        prescriptions = await api(
+          "/prescriptions?id_parcelle=" + curParcelle.id + "&limit=100",
+          { silent: true },
+        ).catch(() => prescriptions);
+        renderAll();
+      });
+      /* La parcelle a changé côté backend (évaporation recalculée par
+         le moteur, eau cumulée après une mission validée…) : on met à
+         jour les compteurs SANS rechargement. */
+      window.addEventListener("terra:parcelle_update", (e) => {
+        if (!curParcelle || e.detail.id !== curParcelle.id) return;
+        Object.assign(curParcelle, e.detail);
+        tweenNumber(
+          document.getElementById("evapVal"),
+          curParcelle.evaporation_mm ?? null,
+          1,
+        );
+        tweenNumber(
+          document.getElementById("eauVal"),
+          curParcelle.eau_utilisee ?? 0,
+          1,
+        );
+      });
+      window.addEventListener("terra:capteur_update", async (e) => {
+        if (!curParcelle || e.detail.id_parcelle !== curParcelle.id) return;
+        capteurs = await api("/capteurs?id_parcelle=" + curParcelle.id, {
+          silent: true,
+        }).catch(() => capteurs);
+        renderAll();
+        log(
+          e.detail.etat === "actif" ? "drop" : "warn",
+          "Capteur « " +
+            e.detail.nom +
+            " » → " +
+            (CAPTEUR_LABELS[e.detail.etat] || e.detail.etat),
+        );
+      });
+      window.addEventListener("terra:alerte_update", (e) => {
+        log(
+          "warn",
+          "Alerte : " +
+            (e.detail.texte || "mise à jour") +
+            " (" +
+            (ALERTE_LABELS[e.detail.etat] || e.detail.etat) +
+            ")",
+        );
+      });
+      /* Alerte IMMÉDIATE du moteur expert (hors cycle de 5 min) — ex.
+         humidité critique, chaleur, capteur muet… Affichée en bandeau
+         PERMANENT dans la carte Recommandation (pas un toast qui
+         disparaît tout seul) : reste visible tant qu'une alerte plus
+         récente ne la remplace pas. */
+      window.addEventListener("terra:alerte_expert", (e) => {
+        if (!curParcelle || e.detail.id_parcelle !== curParcelle.id) return;
+        const box = document.getElementById("alerteExpertBox");
+        box.className = "alerte-box " + (e.detail.gravite === "haute" ? "haute" : "moyenne");
+        box.innerHTML = ticon("alerte") + "<div>" + esc(e.detail.message) + "</div>";
+        box.style.display = "flex";
+        log("warn", e.detail.message);
+      });
+      window.addEventListener("terra:meteo_update", async () => {
+        await chargerMeteo();
+        buildForecast();
+        log("rain", "Météo synchronisée depuis OpenWeather");
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mon profil</title>
+    <link rel="icon" type="image/svg+xml" href="img/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body data-theme="light">
+    <div id="app">
+      <aside id="railMount"></aside>
+      <div class="content">
+        <div id="topbarMount"></div>
+        <main class="main">
+          <section class="view">
+            <div class="grid">
+              <div
+                class="card span4"
+                style="
+                  text-align: center;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                "
+              >
+                <div
+                  class="avatar"
+                  id="bigAvatar"
+                  style="
+                    width: 84px;
+                    height: 84px;
+                    font-size: 32px;
+                    margin: 0 auto 16px;
+                  "
+                ></div>
+                <div
+                  style="font-weight: 800; font-family: Sora; font-size: 19px"
+                  id="pNom"
+                >
+                  —
+                </div>
+                <div
+                  style="
+                    color: var(--muted);
+                    font-size: 13.5px;
+                    margin-top: 2px;
+                  "
+                >
+                  Agriculteur
+                </div>
+              </div>
+              <div class="card span8">
+                <h3><i data-ti="profil"></i>Informations du compte</h3>
+                <div class="field">
+                  <label>Nom complet</label><input id="fNom" disabled />
+                </div>
+                <div class="field">
+                  <label>Email de connexion</label
+                  ><input id="fEmail" disabled />
+                </div>
+                <div class="field">
+                  <label>Identifiant TERRA</label><input id="fId" disabled />
+                </div>
+              </div>
+
+              <div class="card span12">
+                <h3><i data-ti="tomate"></i>Mes parcelles</h3>
+                <div class="table-wrap">
+                  <table class="htable" id="parcTable"></table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+      const user = Layout.mount({
+        role: "agriculteur",
+        active: "profil",
+        title: "",
+        greet: "",
+      });
+
+      document.getElementById("bigAvatar").textContent =
+        user.nom[0].toUpperCase();
+      document.getElementById("pNom").textContent = user.nom;
+      document.getElementById("fNom").value = user.nom;
+      document.getElementById("fEmail").value = user.email || "—";
+      document.getElementById("fId").value = "#" + user.id;
+
+      /* L'email n'est pas dans la session ? On le récupère via /auth/me à défaut. */
+      if (!user.email) {
+        api("/auth/me", { silent: true })
+          .then((me) => {
+            if (me && me.profil && me.profil.email)
+              document.getElementById("fEmail").value = me.profil.email;
+          })
+          .catch(() => {});
+      }
+
+      async function chargerParcelles() {
+        let parcelles = [];
+        try {
+          await chargerProfilCulture(); // stades réels avant computeStade
+          parcelles = await api("/parcelles");
+        } catch (e) {}
+        const t = document.getElementById("parcTable");
+        t.innerHTML =
+          "<tr><th>Nom</th><th>Culture</th><th>Superficie</th><th>Plants</th><th>Date de plantation</th><th>Jour du cycle</th><th>Stade actuel</th></tr>" +
+          (parcelles.length
+            ? parcelles
+                .map((p) => {
+                  const info = computeStade(p);
+                  return (
+                    "<tr><td><b>" +
+                    p.nom +
+                    "</b></td><td>" +
+                    p.culture +
+                    "</td><td>" +
+                    (p.superficie != null ? p.superficie + " ha" : "—") +
+                    "</td><td>" +
+                    (p.nombre_plant != null ? p.nombre_plant : "—") +
+                    "</td><td>" +
+                    fmtDate(p.date_plantation) +
+                    "</td><td>" +
+                    info.jourActuel +
+                    " / " +
+                    info.totalJours +
+                    '</td><td><span class="chip g">' +
+                    info.stade.label +
+                    "</span></td></tr>"
+                  );
+                })
+                .join("")
+            : '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Aucune parcelle — créez-en une depuis « Mes parcelles »</td></tr>');
+      }
+      chargerParcelles();
+    </script>
+  </body>
+</html>
