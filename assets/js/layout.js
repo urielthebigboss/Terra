@@ -284,6 +284,14 @@ const Layout = {
         "</a>";
     });
 
+    if (isAdmin) {
+      html += '<div class="spacer"></div>';
+      html +=
+        '<a class="navlink" href="../index.html" onclick="logout();return false;">' +
+        ticon("sortie") +
+        "<span>Déconnexion</span></a>";
+    }
+
     const mount = document.getElementById("railMount");
     mount.className = "rail";
     mount.innerHTML = html;
