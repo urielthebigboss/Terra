@@ -51,7 +51,7 @@ async function login(email, motDePasse) {
   } catch (e) {
     return {
       ok: false,
-      msg: "Backend injoignable — démarrez l'API (uvicorn app.main:app) sur le port 8000.",
+      msg: "Serveur en cours de démarrage ou injoignable. Veuillez réessayer dans quelques secondes (mise en veille).",
     };
   }
   const data = await r.json().catch(() => ({}));
@@ -166,7 +166,7 @@ async function api(path, opts) {
       return api(path, Object.assign({}, opts, { _retente: true }));
     }
     const err = new Error(
-      "Backend injoignable — l'API TERRA est-elle démarrée ?",
+      "Serveur en cours de démarrage ou injoignable. Veuillez réessayer dans quelques secondes.",
     );
     if (!opts.silent && typeof toast === "function") toast(err.message, "err");
     throw err;

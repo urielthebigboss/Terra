@@ -394,8 +394,9 @@ const Layout = {
       parcelles = await api("/parcelles", { silent: true });
     } catch (e) {
       desactiver("API indisponible");
-      if (typeof toast === "function")
-        toast("Backend injoignable — démarrez l'API TERRA (port 8000).", "err");
+      if (typeof toast === "function") {
+        toast("Serveur en cours de démarrage ou injoignable (mise en veille).", "err");
+      }
       if (opts.onParcelleChange) opts.onParcelleChange(null);
       return;
     }
