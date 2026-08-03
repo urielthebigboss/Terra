@@ -12,9 +12,9 @@
    localStorage pour survivre au rechargement de page.
    ========================================================= */
 
-//const TERRA_API = 'http://localhost:8000/api/v1';
-const TERRA_API = "https://terra-9fg4.onrender.com/api/v1";
-const TERRA_WS = "wss://terra-9fg4.onrender.com/ws";
+const IS_LOCAL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+const TERRA_API = IS_LOCAL ? "http://localhost:8000/api/v1" : "https://terra-9fg4.onrender.com/api/v1";
+const TERRA_WS = IS_LOCAL ? "ws://localhost:8000/ws" : "wss://terra-9fg4.onrender.com/ws";
 const SESSION_KEY = "terra_session_v2";
 
 /* ---------- Session ---------- */
