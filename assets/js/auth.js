@@ -180,10 +180,12 @@ async function api(path, opts) {
     throw new Error("Session expirée");
   }
 
-  // 5xx transitoire (ex. micro-coupure Supabase) : retry des GET
-  if (r.status >= 500 && methode === "GET" && !opts._retente) {
-    await new Promise((res) => setTimeout(res, 400));
-    return api(path, Object.assign({}, opts, { _retente: true }));
+  // 5xx transitoire (ex. micro-coupure Supabase ou réveil Render) : retry des GET avec backoff
+  if (r.status >= 500 && methode === "GET" && (!opts._retries || opts._retries < 3)) {
+    const tentatives = (opts._retries || 0) + 1;
+    // Attente exponentielle : 1.5s, 3s, puis 4.5s (idéal si Render se réveille)
+    await new Promise((res) => setTimeout(res, tentatives * 1500));
+    return api(path, Object.assign({}, opts, { _retries: tentatives }));
   }
 
   if (!r.ok) {
