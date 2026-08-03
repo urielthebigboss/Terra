@@ -2257,8 +2257,23 @@ select option {
     grid-template-columns: 1fr;
   }
   .rail {
+    flex-direction: column;
+    align-items: flex-start;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100vh;
+    padding: 24px;
+    z-index: 200;
     transform: translateX(-100%);
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
+  }
+  .rail-brand {
+    margin-bottom: 24px;
+  }
+  .rail a.navlink, .rail button.navlink {
+    width: 100%;
   }
   .rail.open {
     transform: translateX(0);

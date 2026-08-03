@@ -314,6 +314,9 @@ const Layout = {
   },
   _buildTopbar(opts, user) {
     const html =
+      '<button class="hamburger" onclick="Layout.openMobile()" aria-label="Ouvrir le menu" aria-expanded="false">' +
+      ticon("menu") +
+      '</button>' +
       "<div><h1>" +
       (opts.title || "") +
       '</h1><div class="greet">' +

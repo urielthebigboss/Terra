@@ -32,7 +32,7 @@
    ========================================================= */
 
 const TerraRealtime = (function () {
-  // const URL_WS = 'ws://localhost:8000/ws';
+  //const URL_WS = "ws://localhost:8000/ws";
   const URL_WS = "wss://terra-9fg4.onrender.com/ws";
   let ws = null;
   let tentatives = 0; // pour le backoff de reconnexion

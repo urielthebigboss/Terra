@@ -77,7 +77,7 @@ function _normaliserProfil(rows){
    de session (10 min). Appliqué DÈS le chargement du script : les
    pages n'attendent plus un aller-retour réseau avant le 1er rendu. */
 const _PROFIL_CACHE_KEY = 'terra_profil_culture';
-const _PROFIL_CACHE_TTL = 10 * 60 * 1000;
+const _PROFIL_CACHE_TTL = 0; // Toujours récupérer depuis la BD
 (function(){
   try{
     const c = JSON.parse(sessionStorage.getItem(_PROFIL_CACHE_KEY));

@@ -12,7 +12,8 @@
     />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <link rel="stylesheet" href="../assets/css/style.css" />
-  </head>
+      <link rel="icon" type="image/png" href="../img/logo.png">
+</head>
   <body data-theme="light">
     <div id="app">
       <aside id="railMount"></aside>
@@ -111,7 +112,6 @@
         </main>
       </div>
     </div>
-
     <script src="../assets/js/culture.js"></script>
     <script src="../assets/js/auth.js"></script>
     <script src="../assets/js/ui.js"></script>
@@ -145,19 +145,21 @@
         let capteurs = [],
           mesures = [],
           prescriptions = [],
-          alertes = [];
+          alertes = [],
+          parcelle = null;
         try {
-          [capteurs, mesures, prescriptions, alertes] = await Promise.all([
+          [capteurs, mesures, prescriptions, alertes, parcelle] = await Promise.all([
             api("/capteurs?id_parcelle=" + curParcelle, { silent: true }).catch(
               () => [],
             ),
             api("/mesures?id_parcelle=" + curParcelle + "&limit=1000", {
               silent: true,
             }).catch(() => []),
-            api("/prescriptions?id_parcelle=" + curParcelle + "&limit=200", {
+            api("/prescriptions?id_parcelle=" + curParcelle + "&limit=500", {
               silent: true,
             }).catch(() => []),
             api("/alertes", { silent: true }).catch(() => []),
+            api("/parcelles/" + curParcelle, { silent: true }).catch(() => null),
           ]);
         } catch (e) {}
         const typeDe = (id) => (capteurs.find((c) => c.id === id) || {}).type;
@@ -227,9 +229,11 @@
 
         /* --- KPIs --- */
         const faites = prescriptions.filter((p) => p.etat === "faite");
-        document.getElementById("hWeek").textContent = Math.round(
-          faites.reduce((s, p) => s + (p.volume_eau || 0), 0),
-        );
+        
+        document.getElementById("hWeek").textContent = parcelle ? Math.round(parcelle.eau_utilisee || 0) : 0;
+        document.querySelector("#hWeek").nextElementSibling.textContent = "L/m²";
+        document.querySelector("#hWeek").parentElement.nextElementSibling.textContent = "Volume d'eau total utilisé";
+        
         document.getElementById("hIrrig").textContent = faites.filter(
           (p) => p.volume_eau > 0,
         ).length;
@@ -406,3 +410,4 @@
     </script>
   </body>
 </html>
+

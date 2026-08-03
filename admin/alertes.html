@@ -11,6 +11,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="../assets/css/style.css" />
+    <link rel="icon" type="image/png" href="../img/logo.png">
   </head>
   <body data-theme="light">
     <div id="app">
@@ -33,7 +34,6 @@
                     <option value="en_attente">En attente</option>
                     <option value="en_intervention">En intervention</option>
                     <option value="repare">Réparé</option>
-                    <option value="cloture">Clôturé</option>
                   </select>
                 </div>
                 <div id="alertList"></div>
@@ -80,7 +80,7 @@
 
       function render() {
         const fe = document.getElementById("filterEtat").value;
-        const liste = alertes.filter((a) => !fe || a.etat === fe);
+        const liste = alertes.filter((a) => a.etat !== 'cloture' && (!fe || a.etat === fe));
         const list = document.getElementById("alertList");
         if (!liste.length) {
           list.innerHTML =
@@ -128,7 +128,7 @@
               ).join("") +
               "</div>" +
               '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
-              (idx < ALERTE_ETAPES.length - 1
+              (idx < ALERTE_ETAPES.length - 1 && ALERTE_ETAPES[idx + 1] !== 'cloture'
                 ? '<button class="btn-sm primary" onclick="setEtat(' +
                   a.id +
                   ",'" +
@@ -137,11 +137,6 @@
                   ALERTE_LABELS[ALERTE_ETAPES[idx + 1]] +
                   " »</button>"
                 : '<span class="chip gray">Traitement terminé</span>') +
-              (a.etat !== "cloture"
-                ? '<button class="btn-sm" onclick="setEtat(' +
-                  a.id +
-                  ",'cloture')\">Clôturer directement</button>"
-                : "") +
               "</div>" +
               "</div>"
             );

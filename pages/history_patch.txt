@@ -1,0 +1,193 @@
+    <script src="../assets/js/culture.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/charts.js"></script>
+    <script>
+      const user = Layout.mount({
+        role: "agriculteur",
+        active: "historique",
+        title: "",
+        greet: "",
+        parcelleSelector: true,
+        onParcelleChange(pid) {
+          curParcelle = pid;
+          if (pid !== null) loadData();
+          else videTout();
+        },
+      });
+      let curParcelle = null,
+        allEvents = [],
+        filtered = [],
+        page = 1,
+        perPage = 8;
+
+      function videTout() {
+        allEvents = [];
+        applyFilters();
+      }
+
+      async function loadData() {
+        let capteurs = [],
+          mesures = [],
+          prescriptions = [],
+          alertes = [],
+          parcelle = null;
+        try {
+          [capteurs, mesures, prescriptions, alertes, parcelle] = await Promise.all([
+            api("/capteurs?id_parcelle=" + curParcelle, { silent: true }).catch(
+              () => [],
+            ),
+            api("/mesures?id_parcelle=" + curParcelle + "&limit=1000", {
+              silent: true,
+            }).catch(() => []),
+            api("/prescriptions?id_parcelle=" + curParcelle + "&limit=500", {
+              silent: true,
+            }).catch(() => []),
+            api("/alertes", { silent: true }).catch(() => []),
+            api("/parcelles/" + curParcelle, { silent: true }).catch(() => null),
+          ]);
+        } catch (e) {}
+        const typeDe = (id) => (capteurs.find((c) => c.id === id) || {}).type;
+        const nomDe = (id) =>
+          (capteurs.find((c) => c.id === id) || {}).nom || "#" + id;
+        const idsParcelle = capteurs.map((c) => c.id);
+
+        /* --- Agrégat quotidien des mesures (humidité / température) ---
+           Lecture via valeursMesure (culture.js) : gère le format
+           multi-grandeurs (DHT22 = température + humidité air) et
+           les anciens enregistrements. --- */
+        const parJour = {};
+        mesures.forEach((m) => {
+          const d = String(m.date).slice(0, 10);
+          const j = (parJour[d] = parJour[d] || { hum: [], temp: [] });
+          const v = valeursMesure(typeDe(m.id_capteur), m.donnees);
+          if (v.humidite_sol !== undefined) j.hum.push(v.humidite_sol);
+          if (v.temperature !== undefined) j.temp.push(v.temperature);
+        });
+        const jours = Object.keys(parJour).sort();
+        const moy = (a) =>
+          a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+
+        /* --- Événements du journal --- */
+        allEvents = [];
+        jours.forEach((d) => {
+          const j = parJour[d];
+          const hm = moy(j.hum),
+            tm = moy(j.temp);
+          if (hm !== null || tm !== null)
+            allEvents.push({
+              date: d,
+              type: "mesure",
+              detail:
+                "Relevés IoT — " +
+                (hm !== null ? "humidité moy. " + hm.toFixed(0) + "%" : "") +
+                (hm !== null && tm !== null ? ", " : "") +
+                (tm !== null ? "température moy. " + tm.toFixed(1) + "°C" : ""),
+              eauL: 0,
+            });
+        });
+        prescriptions
+          .filter((p) => p.etat === "faite")
+          .forEach((p) =>
+            allEvents.push({
+              date: p.date_faite || p.date,
+              type: "irrigation",
+              detail:
+                p.action + (p.justification ? " — " + p.justification : ""),
+              eauL: p.volume_eau || 0,
+            }),
+          );
+        alertes
+          .filter((a) => idsParcelle.includes(a.id_capteur))
+          .forEach((a) =>
+            allEvents.push({
+              date: String(a.date).slice(0, 10),
+              type: "capteur",
+              detail:
+                (a.texte || "Alerte capteur " + nomDe(a.id_capteur)) +
+                " (" +
+                (ALERTE_LABELS[a.etat] || a.etat) +
+                ")",
+              eauL: 0,
+            }),
+          );
+
+        /* --- KPIs --- */
+        const faites = prescriptions.filter((p) => p.etat === "faite");
+        
+        document.getElementById("hWeek").textContent = parcelle ? Math.round(parcelle.eau_utilisee || 0) : 0;
+        document.querySelector("#hWeek").nextElementSibling.textContent = "L/m²";
+        document.querySelector("#hWeek").parentElement.nextElementSibling.textContent = "Volume d'eau total utilisé";
+        
+        document.getElementById("hIrrig").textContent = faites.filter(
+          (p) => p.volume_eau > 0,
+        ).length;
+        const humToutes = mesures
+          .map(
+            (m) => valeursMesure(typeDe(m.id_capteur), m.donnees).humidite_sol,
+          )
+          .filter((v) => v !== undefined);
+        document.getElementById("hMoy").textContent = humToutes.length
+          ? Math.round(moy(humToutes))
+          : "--";
+
+        buildCharts(jours, parJour, faites, moy);
+        page = 1;
+        applyFilters();
+      }
+
+      function buildCharts(jours, parJour, faites, moy) {
+        document.querySelectorAll("#chartWater,#chartTrend").forEach((c) => {
+          const ex = Chart.getChart(c);
+          if (ex) ex.destroy();
+        });
+        /* Eau par jour depuis les prescriptions faites */
+        const eauParJour = {};
+        faites.forEach((p) => {
+          const d = p.date_faite || p.date;
+          eauParJour[d] = (eauParJour[d] || 0) + (p.volume_eau || 0);
+        });
+        const joursEau = Object.keys(eauParJour).sort();
+        makeBarChart(
+          "chartWater",
+          joursEau.map(fmtDate),
+          joursEau.map((d) => +eauParJour[d].toFixed(1)),
+          cssv("--blue"),
+          { unit: " L/m²" },
+        );
+        /* Tendances quotidiennes des mesures */
+        makeLineChart("chartTrend", jours.map(fmtDate), [
+          {
+            label: "Humidité moy. (%)",
+            data: jours.map((d) => {
+              const v = moy(parJour[d].hum);
+              return v === null ? null : +v.toFixed(1);
+            }),
+            borderColor: cssv("--green"),
+            backgroundColor: "rgba(21,154,100,.12)",
+            fill: true,
+            tension: 0.4,
+            pointRadius: 2,
+            borderWidth: 2.5,
+          },
+          {
+            label: "Température moy. (°C)",
+            data: jours.map((d) => {
+              const v = moy(parJour[d].temp);
+              return v === null ? null : +v.toFixed(1);
+            }),
+            borderColor: cssv("--red"),
+            backgroundColor: "transparent",
+            fill: false,
+            tension: 0.4,
+            pointRadius: 2,
+            borderWidth: 2,
+          },
+        ]);
+      }
+
+      function applyFilters() {
+        const q = (document.getElementById("search").value || "").toLowerCase();
+        const type = document.getElementById("filterType").value;
+        const sort = document.getElementById("sortBy").value;

@@ -12,7 +12,8 @@
     />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <link rel="stylesheet" href="../assets/css/style.css" />
-  </head>
+      <link rel="icon" type="image/png" href="../img/logo.png">
+</head>
   <body data-theme="light">
     <div id="app">
       <aside id="railMount"></aside>
@@ -123,15 +124,17 @@
                     </svg>
                   </div>
                   <div>
+                    <div style="font-size:14px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom: 4px;">Humidité du sol</div>
                     <div class="hero-pct">
                       <span id="moistVal">--</span><small>%</small>
                     </div>
                     <div class="statusword" id="statusWord">—</div>
                     <div class="hero-sub" id="heroSub">
-                      Humidité du sol mesurée par les capteurs.
+                      Le sol est en dessous du seuil : la plante manque d'eau.
                     </div>
                     <div class="tag ok" id="heroTag"></div>
                   </div>
+
                 </div>
               </div>
 
@@ -618,7 +621,15 @@
           ? ""
           : "Aucune mesure d'humidité du sol reçue — vérifiez le capteur capacitif.";
         
-        if (chart) chart.destroy();
+        if (chart) {
+          chart.data.labels = labels;
+          chart.data.datasets[0].data = data;
+          chart.data.datasets[1].data = data.map(() => info.stade.seuilBas);
+          chart.data.datasets[2].data = data.map(() => info.stade.seuilCible);
+          chart.options.scales.y.max = Math.max(40, (info.stade.humiditeMax || 33) + 7);
+          chart.update('none');
+          return;
+        }
         
         const canvas = document.getElementById("chart");
         const ctx = canvas.getContext('2d');
@@ -952,7 +963,7 @@
             "</svg>"
           );
         };
-        g.innerHTML = jours
+        const newHtml = jours
           .map(
             (j) =>
               '<div class="span2 wx-tile">' +
@@ -973,6 +984,11 @@
               "</div>",
           )
           .join("");
+          
+        if (g.innerHTML !== newHtml) {
+           g.innerHTML = newHtml;
+        }
+        
         const rainSoon = jours.length && jours[0].pluie > 0.4;
         const wI = document.getElementById("wIcon"),
           wT = document.getElementById("wTitle"),
@@ -1012,13 +1028,12 @@
       /* À chaque (re)connexion du WebSocket, on recharge tout : si la
          connexion a été coupée (backend redémarré, réseau…), les
          événements manqués sont ainsi rattrapés sans recharger la page. */
-      let _wsDejaOuvert = false;
       window.addEventListener("terra:ws_ouvert", async () => {
         const p = document.getElementById("wsPill");
         if (p) {
           p.style.opacity = 1;
         }
-        if (_wsDejaOuvert && curParcelle) {
+        if (curParcelle) {
           await Promise.all([chargerDonnees(), chargerMeteo()]);
           renderAll();
           log(
@@ -1026,7 +1041,6 @@
             "Connexion temps réel rétablie — données resynchronisées",
           );
         }
-        _wsDejaOuvert = true;
       });
       window.addEventListener("terra:mesures_bulk", async (e) => {
         if (!curParcelle) return;
@@ -1120,3 +1134,4 @@
     </script>
   </body>
 </html>
+
